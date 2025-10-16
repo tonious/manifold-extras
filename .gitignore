@@ -1,2 +1,6 @@
-node_modules
 .vs_code
+**/.*.sw?
+dist
+node_modules
+tonious-manifold-extras-*.tgz
+

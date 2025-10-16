@@ -13,11 +13,19 @@
   "license": "ISC",
   "author": "Tony Thompson <tony@thompson.name>",
   "type": "module",
-  "main": "index.js",
+  "main": "dist/index.cjs.js",
+  "module": "./dist/index.esm.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "rollup -c",
+    "prepare": "npm run build",
+    "clean": "rm dist/* && rmdir dist"
   },
   "dependencies": {
     "hershey": "^2.1.7"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.8",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "rollup": "^4.52.4"
   }
 }
