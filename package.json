@@ -1,0 +1,23 @@
+{
+  "name": "@tonious/manifold-extras",
+  "version": "0.0.1",
+  "description": "Extra tools for use with manifold-3d",
+  "homepage": "https://github.com/tonious/manifold-extras#readme",
+  "bugs": {
+    "url": "https://github.com/tonious/manifold-extras/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tonious/manifold-extras.git"
+  },
+  "license": "ISC",
+  "author": "Tony Thompson <tony@thompson.name>",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "hershey": "^2.1.7"
+  }
+}
