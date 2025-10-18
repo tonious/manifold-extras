@@ -1,6 +1,6 @@
 {
   "name": "@tonious/manifold-extras",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Extra tools for use with manifold-3d",
   "homepage": "https://github.com/tonious/manifold-extras#readme",
   "bugs": {
