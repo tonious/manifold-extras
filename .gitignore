@@ -3,4 +3,7 @@
 dist
 node_modules
 tonious-manifold-extras-*.tgz
+lib/*.js
+lib/*.js.map
+lib/*.d.ts
 

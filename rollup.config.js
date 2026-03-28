@@ -1,13 +1,20 @@
 import { nodeResolve } from '@rollup/plugin-node-resolve'
 import commonjs from '@rollup/plugin-commonjs';
-import pkg from './package.json' with { type: "json" }
+import typescript from '@rollup/plugin-typescript';
 
 export default {
-	input: 'index.js',
-    output: [
-        { file: pkg.main, format: 'cjs' },
-        { file: pkg.module, format: 'es' }
+    input: [
+        'lib/axes.mjs',
+        'lib/chainhull.ts',
+        'lib/batch.ts',
+        'lib/meshutil.ts',
+        'lib/wireframe.ts',
+        'index.ts'
     ],
+    output: {
+        dir:"dist",
+        format: 'es'
+    },
     external: [
         'manifold-3d',
         'manifold-3d/manifoldCAD'
@@ -15,5 +22,6 @@ export default {
     plugins: [
         nodeResolve(), // Find packages in node_modules.
         commonjs(), // Convert any CJS dependencies to ESM.
+        typescript(), // Transpile TypeScript.
     ]
 }

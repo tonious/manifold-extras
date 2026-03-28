@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": [
+      "esnext",
+    ],
+    "sourceMap": false,
+    "inlineSources": false,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "declaration": true,
+    "declarationMap": false,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "typeRoots": ["./node_modules/@types", "./lib/types"],
+    "declarationDir": "dist"
+  },
+  "include": [
+    "lib/**/*.ts",
+    "lib/**/*.mjs"
+  ],
+  "exclude": [
+    "./lib/types"
+  ]
+}
+
