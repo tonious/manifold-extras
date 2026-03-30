@@ -9,10 +9,11 @@ export default {
         'lib/batch.ts',
         'lib/meshutil.ts',
         'lib/wireframe.ts',
+        'lib/math.ts',
         'index.ts'
     ],
     output: {
-        dir:"dist",
+        dir: "dist",
         format: 'es'
     },
     external: [

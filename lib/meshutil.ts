@@ -1,5 +1,8 @@
 import {Mesh} from 'manifold-3d/manifoldCAD';
 
+import {Vec3} from './math.ts';
+
+
 
 /**
  * A halfedge connects two numbered vertices, presumably belonging to the same Mesh.
@@ -18,6 +21,16 @@ export function triangleRun(mesh:Mesh, t:number) {
 
 export function triangleOriginalID(mesh:Mesh, t:number) {
   return mesh.runOriginalID[triangleRun(mesh, t)];
+}
+
+export function vertexNormal(mesh:Mesh, vertex:number, pos:number=3) {
+  const offset = vertex * mesh.numProp + pos;
+  return [...mesh.vertProperties.slice(offset, offset+3)] as Vec3.Vec3
+}
+
+export function vertexPosition(mesh:Mesh, vertex:number) {
+  const offset = vertex * mesh.numProp;
+  return [...mesh.vertProperties.slice(offset, offset+3)] as Vec3.Vec3
 }
 
 export function mergedVertex(mesh:Mesh, vertex:number) {
@@ -122,3 +135,19 @@ export function* faceTriangles(
     yield t
   }
 }
+
+
+export function* vertexNormalsOf(mesh:Mesh, triangles?:Iterable<number>):Iterable<Vec3.Segment> {
+  const seen = new Set();
+  for (const tri of triangles ?? new Array(mesh.numTri).keys()) {
+    const vertices = [...mesh.triVerts.slice(tri*3, (tri+1)*3).values()];
+    for (const vertex of vertices) {
+      if (seen.has(vertex)) continue;
+      seen.add(vertex);
+      const position = vertexPosition(mesh, vertex);
+      const normal = vertexNormal(mesh, vertex);
+      if (Math.abs(Vec3.length(normal) - 1) > 0.1) continue;
+      yield [position, Vec3.add(position, normal)];
+    }
+  }
+};

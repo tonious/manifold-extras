@@ -33,6 +33,10 @@
       "types": "./dist/wireframe.d.ts",
       "module": "./dist/wireframe.js"
     },
+    "math": {
+      "types": "./dist/math.d.ts",
+      "module": "./dist/math.js"
+    },
     "meshutil": {
       "types": "./dist/meshutil.d.ts",
       "module": "./dist/meshutil.js"
