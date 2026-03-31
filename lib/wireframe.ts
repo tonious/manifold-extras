@@ -134,7 +134,7 @@ export function wireframe(object:Manifold|Mesh):Manifold {
   }
   const parts = [
     setMaterial(
-      meshWireframe(mesh, {radius:0.15}),
+      meshWireframe(mesh, {radius:0.125}),
       faceEdgeMaterial
     ),
     setMaterial(
@@ -142,7 +142,7 @@ export function wireframe(object:Manifold|Mesh):Manifold {
       triangleEdgeMaterial,
     ),
     setMaterial(
-      meshNormals(mesh),
+      meshNormals(mesh,  {radius:0.15}),
       normalMaterial,
     )
   ];
@@ -194,7 +194,7 @@ export default () => {
   const fillet = Manifold.ofMesh(mesh).smoothByNormals(0).refineToTolerance(0.1);
 
   return [
-    fillet,
+    //fillet,
     wireframe(fillet)
   ]
 }
