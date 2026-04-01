@@ -48,7 +48,7 @@ export function mergedVertex(mesh:Mesh, vertex:number) {
   return vertMerge?.has(vertex) ? vertMerge.get(vertex)! : vertex;
 }
 
-function halfedgeKey (mesh:Mesh, halfedge:HalfEdge): string {
+export function halfedgeKey (mesh:Mesh, halfedge:HalfEdge): string {
   const merged = halfedge.map((v:number) => mergedVertex(mesh, v));
   return `[${Math.min(...merged)},${Math.max(...merged)}]`;
 }

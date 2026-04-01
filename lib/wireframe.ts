@@ -2,13 +2,12 @@ import {Mesh, Manifold, setMaterial} from 'manifold-3d/manifoldCAD';
 import type {Vec3, GLTFMaterial} from 'manifold-3d/manifoldCAD';
 import { batchUnion } from './batch.ts';
 import type {HalfEdge} from './meshutil.ts';
-import { uniqueHalfedges, faceEdges, halfedgesOf, vertexNormalsOf } from './meshutil.ts';
+import { uniqueHalfedges, faceEdges, halfedgesOf, vertexNormalsOf, halfedgeKey } from './meshutil.ts';
 
 /**
  * A segment connects two 3d points, each defined as a Vec3.
  */
 export type Segment = [Vec3, Vec3];
-
 
 /**
  * Convert half-edges belonging to a mesh to segments in free space.
@@ -127,24 +126,71 @@ const normalMaterial:GLTFMaterial = {
   unlit: true
 };
 
-export function wireframe(object:Manifold|Mesh):Manifold {
+export function wireframe(object:Manifold|Mesh, args:Partial<MeshPreviewArguments> = {}):Manifold {
+  const opts = {
+    radius: 0.1,
+    verbose: true,
+    batchSize: 500,
+    ...args,
+  }
+
   const mesh = object instanceof Manifold ? object.getMesh() : object;
   if (!(mesh instanceof Mesh)) {
     throw new Error("That's not a mesh!");
   }
+  const triangles = [...(args.triangles??(new Array(mesh.numTri).keys()))]
+
+  const seen = new Set();
+  function* edges() {
+    for (const edge of faceEdges(mesh, triangles)) {
+      const key = halfedgeKey(mesh, edge);
+      if (!seen.has(key)) {
+        seen.add(halfedgeKey(mesh, edge));
+        yield edge;
+      }
+    }
+  }
+
+  function* triangleEdges() {
+    for (const edge of halfedgesOf(mesh, triangles)) {
+      const key = halfedgeKey(mesh, edge);
+      if (!seen.has(key)) {
+        seen.add(halfedgeKey(mesh, edge));
+        yield edge;
+      }
+    }
+  }
+
+  let processed = -1;
+  const progress = (pass:number) => (num:number) => {
+    if (pass === 0) processed = num;
+    else if (num !== 0) num += processed;
+    else return;
+    console.log(`${num}/${mesh.numTri * 3/2} edges processed`);
+  };
+
   const parts = [
+    setMaterial(meshNormals(mesh, {...args, triangles}), normalMaterial),
     setMaterial(
-      meshWireframe(mesh, {radius:0.125}),
+      batchUnion(
+        segmentsToManifolds(halfedgesToSegments(mesh, edges()), opts.radius),
+        {
+          batchSize: opts.batchSize,
+          callback: opts.verbose ? progress(0) : null
+        }
+      ),
       faceEdgeMaterial
     ),
     setMaterial(
-      meshTriangleWireframe(mesh),
-      triangleEdgeMaterial,
+      batchUnion(
+        segmentsToManifolds(halfedgesToSegments(mesh, triangleEdges()), opts.radius * 1.05),
+        {
+          batchSize: opts.batchSize,
+          callback: opts.verbose ? progress(1) : null
+        }
+      ),
+      triangleEdgeMaterial
     ),
-    setMaterial(
-      meshNormals(mesh,  {radius:0.15}),
-      normalMaterial,
-    )
   ];
   return Manifold.union(parts);
 }
@@ -169,33 +215,4 @@ export const example = () => {
   ];
 };
 
-export default () => {
-  const cube = Manifold.cube(10);
-  const cut = cube.rotate(45).translate([0, 0, 5]).asOriginal();
-  const cutID = cut.originalID();
-  const chamfer = cube.subtract(cut).calculateNormals(0, 30);
-  const mesh = chamfer.getMesh(0);
-
-  const run = mesh.runOriginalID.findIndex((v) => v == cutID);
-  for (var i = mesh.runIndex[run]; i < mesh.runIndex[run + 1]; ++i) {
-    const v = mesh.triVerts[i];
-    // adjust normals to match desired faces
-    if (mesh.vertProperties[mesh.numProp * v + 2] > 8) {// upper
-      mesh.vertProperties[mesh.numProp * v + 3] = 0;
-      mesh.vertProperties[mesh.numProp * v + 4] = 0;
-      mesh.vertProperties[mesh.numProp * v + 5] = 1;
-    } else {// lower
-      mesh.vertProperties[mesh.numProp * v + 3] = 0;
-      mesh.vertProperties[mesh.numProp * v + 4] = -1;
-      mesh.vertProperties[mesh.numProp * v + 5] = 0;
-    }
-  }
-
-  const fillet = Manifold.ofMesh(mesh).smoothByNormals(0).refineToTolerance(0.1);
-
-  return [
-    //fillet,
-    wireframe(fillet)
-  ]
-}
-
+export default example;
