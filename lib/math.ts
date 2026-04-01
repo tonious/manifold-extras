@@ -79,17 +79,18 @@ export namespace Vec3 {
         return scale(b, dot(b, a) / denominator);
     };
 
-    export const projectOnPlane = (a: Vec3, planeNormal: Vec3): Vec3 => {
-        return sub(a, project(a, planeNormal));
+    export const projectToPlane = (a: Vec3, planeNormal: Vec3, planeOrigin:Vec3 = [0,0,0]): Vec3 => {
+        const translated = sub(a, planeOrigin);
+        const projected = sub(translated, project(translated, planeNormal));
+        return add(projected, planeOrigin);
     };
-
 
     /**
      * Courtesy of Zalo.
      * https://zalo.github.io/blog/closest-point-between-segments/
      * https://github.com/zalo/zalo.github.io/blob/master/assets/js/ClosestSegment/SegmentSegment.js
      */
-    export const projectPointOnSegment = ([a, b]:Segment, point:Vec3):Vec3 => {
+    export const constrainToSegment = ([a, b]:Segment, point:Vec3):Vec3 => {
         const ba = sub(b,a)
         const t = dot(sub(point, a), ba) / lengthSq(ba);
         return lerp(a,b,clamp(t));
@@ -97,8 +98,8 @@ export namespace Vec3 {
 
     export const closestPointOnSegmentToLine = ([segA, segB]:Segment, [lineA, lineB]:Segment):Vec3 => {
         const lineBAAxis = normalize(sub(lineB,lineA));
-        const inPlaneA = add(projectOnPlane(sub(segA, lineA), lineBAAxis), lineA);
-        const inPlaneB = add(projectOnPlane(sub(segB, lineA), lineBAAxis), lineA);
+        const inPlaneA = projectToPlane(segA, lineBAAxis, lineA);
+        const inPlaneB = projectToPlane(segB, lineBAAxis, lineA);
         const inPlaneBA = sub(inPlaneB,inPlaneA);
         const t = dot(sub(lineA, inPlaneA), inPlaneBA) / lengthSq(inPlaneBA);
         return lerp(segA, segB, clamp(t));
@@ -106,8 +107,8 @@ export namespace Vec3 {
 
     export const closestPointOnSegmentToSegment = ([segA, segB]:Segment, [segC, segD]:Segment):[Vec3,Vec3] => {
         const rayPoint = closestPointOnSegmentToLine([segA, segB], [segC, segD]);
-        const pointCD = projectPointOnSegment([segC, segD], rayPoint);
-        const pointAB = projectPointOnSegment([segA, segB], pointCD);
+        const pointCD = constrainToSegment([segC, segD], rayPoint);
+        const pointAB = constrainToSegment([segA, segB], pointCD);
         return [pointAB, pointCD];
     };
 }
@@ -117,7 +118,6 @@ export namespace Mat4 {
     const {normalize, cross, dot} = Vec3;
     export type Vec3=manifoldTypes.Vec3;
     export type Mat4=manifoldTypes.Mat4;
-
 
     export const identity = (): Mat4 => ([
         1, 0, 0, 0,   0, 1, 0, 0,   0, 0, 1, 0,   0, 0, 0, 1

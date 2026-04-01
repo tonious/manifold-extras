@@ -29,6 +29,10 @@
       "types": "./dist/chainhull.d.ts",
       "module": "./dist/chainhull.js"
     },
+    "chamfer": {
+      "types": "./dist/chamfer.d.ts",
+      "module": "./dist/chamfer.js"
+    },
     "wireframe": {
       "types": "./dist/wireframe.d.ts",
       "module": "./dist/wireframe.js"
