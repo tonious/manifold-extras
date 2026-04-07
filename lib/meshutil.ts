@@ -167,7 +167,7 @@ export function* curvedTriangles(mesh:Mesh, triangles?:Iterable<number>): Iterab
   for (const tri of (triangles ?? new Array(mesh.numTri).keys())) {
     const triVerts = triangleVertices(mesh, tri);
     const [n1, n2, n3] = triVerts.map(v => vertexNormal(mesh, v));
-    if (!(equals(n1, n2) && equals(n1, n3))) {
+    if (!(equals(n1, n2, 1e-3) && equals(n1, n3, 1e-3))) {
       yield(tri);
     }
   }

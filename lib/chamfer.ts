@@ -1,100 +1,64 @@
 import {setMaterial, Mesh, Manifold, CrossSection} from 'manifold-3d/manifoldCAD';
-import type {GLTFMaterial, Vec3} from 'manifold-3d/manifoldCAD';
-import {wireframe} from './wireframe.ts';
+import type {GLTFMaterial} from 'manifold-3d/manifoldCAD';
+import {halfedgesToSegments, segmentsToManifolds, wireframe} from './wireframe.ts';
+import type {Segment} from './wireframe.ts';
 import type {HalfEdge} from './meshutil.ts';
-import {halfedgesOf, runEdges, uniqueHalfedges, vertexPosition, curvedTriangles} from './meshutil.ts';
+import {runEdges, uniqueHalfedges, vertexPosition, curvedTriangles, triangleVertices, halfedgeKey} from './meshutil.ts';
 import {batchUnion} from './batch.ts';
 import * as math from './math.ts';
+import { segmentCylinder } from './intersection.ts';
 
-const {constrainToSegment, length, sub, lerp} = math.Vec3;
-const {cylinder, cube, sphere, union, hull} = Manifold;
+const {length, sub, constrainToSegment, lerp} = math.Vec3;
+const {cube, union} = Manifold;
 
-const distanceTo = (segment:[Vec3, Vec3], p:Vec3) => {
-  const pn = constrainToSegment(segment, p);
-  return length(sub(pn, p));
-}
+function segmentTriangles(mesh:Mesh, triangles:Iterable<number>, edges:Array<HalfEdge>, radius:number=1) {
+    const result:Array<Manifold> = [];
+    const tolerance = 1e-3; // mm.
+    const s = Manifold.sphere(0.5);
+    const seen:Set<string> = new Set();
 
-function segmentEdges(mesh:Mesh, edges:Iterable<HalfEdge>, segments:Array<HalfEdge>, radius:number=1) {
-  console.log("segmentEdges()")
-  
-  function *intersection(edges:Iterable<HalfEdge>) {
-    const s = sphere(0.25)
+    const segments = [...halfedgesToSegments(mesh,edges)];
+    for (const t of triangles) {
+        const [v1, v2, v3] = triangleVertices(mesh, t);
+        for (const tedge of [[v1, v2], [v2, v3], [v3, v1]] as Array<HalfEdge>) {
+            const tkey = halfedgeKey(mesh,tedge);
+            if (seen.has(tkey)) continue;
+            seen.add(tkey);
 
-    for (const edge of edges) {
-      //const [ve1, ve2] = edge;
-      const [pe1, pe2] = edge.map(v => vertexPosition(mesh,v));
-      //const u = subVec3(pe2, pe1);
+            const tsegment = tedge.map(v => vertexPosition(mesh, v)) as Segment
+            const candidates:Array<any> = [];
+            for (const segment of segments) {
+                const pts = segmentCylinder(tsegment, segment, radius)
+                for (const pt of pts) {
+                  const closer = segments
+                    .map(seg => length(sub(pt,constrainToSegment(seg, pt))))
+                    .find(l => l < (radius-tolerance));
+                  if ((closer ?? -1) >= 0) continue;
 
-      //let bestAngle = 2
-      let bestSegment:[number,number]|null = null;
-      let skip = true;
-      let bestPoint:Vec3|null = null;
-      let bestDistance = null;
+                  result.push(Manifold.hull([
+                    s.scale(0.30).translate(pt),
+                    s.scale(0.30).translate(lerp(segment[0], segment[1], 0.5))
+                  ]))
 
-      for (const segment of segments) {
-        const [p1, p2] = segment.map(v => vertexPosition(mesh,v))
+                  candidates.push(pt);
+                }
+            }
 
-        // How close are we?
-        // Distance from each vertex of edge to contour segment.
-        const d1 = distanceTo([p1, p2], pe1);
-        const d2 = distanceTo([p1, p2], pe2);
-        if (d1<radius && d2<radius) {
-          // Too close.
-          skip = true
-          break;
+            for (const pt of candidates) {
+              result.push(s.translate(pt));
+            }
+          
         }
-        if(d1>radius && d2>radius) {
-          // Not close.
-          //skip = true;
-          continue;
-        }
-        skip = false;
-
-        const t = (radius-d1)/(d2-d1);
-        if (t <= 0 || t >= 1) continue;
-
-        //const v = subVec3(p2, p1)
-        const distance = (t*d1+(1-t)*d2)
-
-        if (typeof bestDistance !== 'number' || bestDistance >= distance) {
-          // No need for special cases for t === 0 || t === 1
-          bestSegment = segment;
-          //bestAngle = angle;
-          bestDistance = distance;
-
-          bestPoint = lerp(pe1, pe2, t);
-          //console.log(bestDistance)
-        }
-      }
-
-      if (!skip && bestPoint && bestSegment) {
-                /*
-
-        yield (s.translate(bestPoint))
-        console.log({bestDistance})
-              */
-
-        const [p1,p2] = bestSegment.map(v => vertexPosition(mesh,v))
-        const ps = lerp(p1, p2, 0.5)
-        yield hull([
-          s.translate(bestPoint),
-          s.translate(ps)
-        ]);
-      }
     }
-  }
-
-  const result=batchUnion(intersection(edges))
-  console.log("segmentEdges() done")
-  return result;
+    return batchUnion(result.flat())
 }
 
-export const torus = (major:number, minor:number) => {
-  return CrossSection.circle(minor).translate([major,0]).revolve();
+export const torus = (minor:number, major:number) => {
+  return CrossSection.circle(minor).translate([major, 0]).revolve();
 };
 
 const example = () => {
-  const chamferR = 8;
+  const chamferR = 4;
   const minSharpAngle = 30;
 
   const baseMaterial:GLTFMaterial = {
@@ -110,10 +74,10 @@ const example = () => {
   const base = setMaterial(cube([100,100,10], true).translate([0,0,5]), baseMaterial);
   const shapes = [
     //cube([35,35,25], true).translate([0,0,25/2]),
-    //cylinder(25,35/2,35/2,16).translate([0,0,0.1]),
-    cylinder(50,35/2, 35/2).translate([0,0,-15]).rotate([0,30,0]),
+    //Manifold.cylinder(25,35/2,35/2,16).translate([0,0,0.1]),
+    //Manifold.cylinder(50,35/2, 35/2).translate([0,0,-15]).rotate([0,30,0]),
     //torus(10,25).rotate([-60,0,0]).translate([0,0,22]),
-    //torus(10,25).rotate([90,0,0]).translate([0,0,25]),
+    torus(10,25).rotate([90,0,0]).translate([0,0,25]),
   ].map(shape => setMaterial(
     shape.calculateNormals(0,minSharpAngle),
     shapeMaterial
@@ -128,25 +92,40 @@ const example = () => {
     results.push(geom);
 
     const mesh = geom.getMesh();
-    const triangles = [...curvedTriangles(mesh)];
-    const edges = halfedgesOf(mesh, triangles);
+    let segments = [...uniqueHalfedges(mesh, runEdges(mesh))];
+    let triangles = [...curvedTriangles(mesh)];
 
-    const segments = [...uniqueHalfedges(mesh, runEdges(mesh))];
-    const subset =  segments.slice(45,46);
+    //triangles = [208,209] //[...triangles.slice(203,204)];
+    //segments = [...segments.slice(45,46)];
+    //segments = segments.filter(([a,b]) => a === 127 || b === 127)
+    if (true) {
+        results.push(setMaterial(
+            segmentTriangles(mesh, triangles, segments, chamferR),
+            {
+                baseColorFactor: [0,0,1],
+                unlit: true
+            }
+        ));
+    }
 
-    results.push(setMaterial(
-        segmentEdges(mesh, edges, subset, chamferR),
-        {
-            baseColorFactor: [0,0,1],
-            unlit: true
-        }
-    ));
+    if (false) {
+        results.push(setMaterial(
+            batchUnion(segmentsToManifolds(halfedgesToSegments(mesh, segments), chamferR)),
+            {
+                baseColorFactor: [0,1,0],
+                unlit: false,
+                alpha: 0.8,
+            }
+        ));
+    }
 
     // Show wireframe + normals.
     if (true) results.push(wireframe(mesh, {triangles}));
+
   }
 
-  return results;
+  // OS X preview is a little more responsive at this scale.
+  return results.map(geom => geom.scale(1000));
 }
 
 export default example;
