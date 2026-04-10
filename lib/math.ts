@@ -1,18 +1,39 @@
 import type * as manifoldTypes from 'manifold-3d/manifoldCAD';
 
-export const clamp = (t:number, low:number=1.0, high:number=1.0) => ((t<low) ? low : ((t>high) ? high : t));
+export const clamp = (t:number, low:number=0.0, high:number=1.0) => ((t<low) ? low : ((t>high) ? high : t));
+export const sign = (t:number) => (t<0 ? -1 : (t>0 ? +1 : 0));
+
+export const isSegment = (a:any) => {
+    if (!Array.isArray(a)) return false;
+    if (a.length !== 2) return false;
+    if (a.find(x => !Vec3.isVec3(x))) return false;
+    return true;
+}
 
 export namespace Vec3 {
     export type Vec3=manifoldTypes.Vec3;
     export type Segment = [Vec3,Vec3];
+
+    export const isVec3 = (a:any):boolean => {
+        if (!Array.isArray(a)) return false;
+        if (a.length !== 3) return false;
+        if (a.find(x => typeof x !== 'number')) return false;
+        return true;
+    }
 
     export const lengthSq = (v: Vec3): number => {
         const [ax, ay, az] = v;
         return ax ** 2 + ay ** 2 + az ** 2;
     };
 
-    export const length = (v: Vec3): number => {
-        return Math.sqrt(lengthSq(v));
+    export const length = (v: Vec3|Segment): number => {
+        if (isVec3(v)) {
+            return Math.sqrt(lengthSq(v as Vec3));
+        } else if (isSegment(v)) {
+            const [p1,p2] = v as Segment;
+            return length(sub(p2,p1));
+        }
+        throw new TypeError();
     };
 
     export const scale = (v: Vec3, s: number): Vec3 => {
@@ -20,8 +41,14 @@ export namespace Vec3 {
         return [ax * s, ay * s, az * s];
     };
 
-    export const normalize = (v: Vec3): Vec3 => {
-        return scale(v, 1 / length(v));
+    export const normalize = (v: Vec3|Segment): Vec3 => {
+        if (isVec3(v)) {
+            return scale(v as Vec3, 1 / length(v));
+        } else if (isSegment(v)) {
+            const [p1,p2] = v as Segment;
+            return normalize(sub(p2,p1));
+        }
+        throw new TypeError();
     };
 
     export const add = (a: Vec3, b: Vec3): Vec3 => {
@@ -79,17 +106,18 @@ export namespace Vec3 {
         return scale(b, dot(b, a) / denominator);
     };
 
-    export const projectOnPlane = (a: Vec3, planeNormal: Vec3): Vec3 => {
-        return sub(a, project(a, planeNormal));
+    export const projectToPlane = (a: Vec3, planeNormal: Vec3, planeOrigin:Vec3 = [0,0,0]): Vec3 => {
+        const translated = sub(a, planeOrigin);
+        const projected = sub(translated, project(translated, planeNormal));
+        return add(projected, planeOrigin);
     };
-
 
     /**
      * Courtesy of Zalo.
      * https://zalo.github.io/blog/closest-point-between-segments/
      * https://github.com/zalo/zalo.github.io/blob/master/assets/js/ClosestSegment/SegmentSegment.js
      */
-    export const projectPointOnSegment = ([a, b]:Segment, point:Vec3):Vec3 => {
+    export const constrainToSegment = ([a, b]:Segment, point:Vec3):Vec3 => {
         const ba = sub(b,a)
         const t = dot(sub(point, a), ba) / lengthSq(ba);
         return lerp(a,b,clamp(t));
@@ -97,8 +125,8 @@ export namespace Vec3 {
 
     export const closestPointOnSegmentToLine = ([segA, segB]:Segment, [lineA, lineB]:Segment):Vec3 => {
         const lineBAAxis = normalize(sub(lineB,lineA));
-        const inPlaneA = add(projectOnPlane(sub(segA, lineA), lineBAAxis), lineA);
-        const inPlaneB = add(projectOnPlane(sub(segB, lineA), lineBAAxis), lineA);
+        const inPlaneA = projectToPlane(segA, lineBAAxis, lineA);
+        const inPlaneB = projectToPlane(segB, lineBAAxis, lineA);
         const inPlaneBA = sub(inPlaneB,inPlaneA);
         const t = dot(sub(lineA, inPlaneA), inPlaneBA) / lengthSq(inPlaneBA);
         return lerp(segA, segB, clamp(t));
@@ -106,8 +134,8 @@ export namespace Vec3 {
 
     export const closestPointOnSegmentToSegment = ([segA, segB]:Segment, [segC, segD]:Segment):[Vec3,Vec3] => {
         const rayPoint = closestPointOnSegmentToLine([segA, segB], [segC, segD]);
-        const pointCD = projectPointOnSegment([segC, segD], rayPoint);
-        const pointAB = projectPointOnSegment([segA, segB], pointCD);
+        const pointCD = constrainToSegment([segC, segD], rayPoint);
+        const pointAB = constrainToSegment([segA, segB], pointCD);
         return [pointAB, pointCD];
     };
 }
@@ -117,7 +145,6 @@ export namespace Mat4 {
     const {normalize, cross, dot} = Vec3;
     export type Vec3=manifoldTypes.Vec3;
     export type Mat4=manifoldTypes.Mat4;
-
 
     export const identity = (): Mat4 => ([
         1, 0, 0, 0,   0, 1, 0, 0,   0, 0, 1, 0,   0, 0, 0, 1
