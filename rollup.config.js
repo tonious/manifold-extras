@@ -5,11 +5,15 @@ import typescript from '@rollup/plugin-typescript';
 export default {
     input: [
         'lib/axes.mjs',
-        'lib/chainhull.ts',
         'lib/batch.ts',
-        'lib/meshutil.ts',
-        'lib/wireframe.ts',
+        'lib/chainhull.ts',
+        'lib/chamfer.ts',
+        'lib/hershey.mjs',
+        'lib/intersection.ts',
         'lib/math.ts',
+        'lib/meshutil.ts',
+        'lib/taper.ts',
+        'lib/wireframe.ts',
         'index.ts'
     ],
     output: {

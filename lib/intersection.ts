@@ -2,7 +2,7 @@ import {Manifold, Vec3, GLTFMaterial, setMaterial} from 'manifold-3d/manifoldCAD
 import type {Segment} from './math.ts';
 import {
   add, cross, length, sub, dot, scale, normalize,
-  rotateAlign, translate, multiply
+  rotateAlign, translate
 } from './math.ts';
 
 const signs = (dis:number, tolerance=1e-3):Array<number> => {
@@ -93,7 +93,7 @@ const cylinder = (axis:Segment, radius:number=0.1, material=rayMaterial) => {
 
   const mRot = rotateAlign([0,0,1],naxis);
   const mTrans = translate(axis[0]);
-  geom = geom.transform(multiply(mTrans, mRot));
+  geom = geom.transform(cross(mTrans, mRot));
   return setMaterial(geom, material);
 }
 

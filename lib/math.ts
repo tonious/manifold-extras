@@ -74,7 +74,7 @@ export const sub = (a: Vec3, b: Vec3): Vec3 => {
     return [ax - bx, ay - by, az - bz];
 };
 
-export const cross = (a: Vec3, b: Vec3): Vec3 => {
+export const crossVec3Vec3 = (a: Vec3, b: Vec3): Vec3 => {
     const [ax, ay, az] = a;
     const [bx, by, bz] = b;
 
@@ -156,7 +156,7 @@ export const identity = (): Mat4 => ([
     1, 0, 0, 0,   0, 1, 0, 0,   0, 0, 1, 0,   0, 0, 0, 1
 ]);
 
-const multiplyMat4 = (a: Mat4, b: Mat4):Mat4 => {
+const crossMat4Mat4 = (a: Mat4, b: Mat4):Mat4 => {
     const m = identity();
     const A = (row:number, col:number) => a[_addr(row, col)];
     const B = (row:number, col:number) => b[_addr(row, col)];
@@ -176,7 +176,7 @@ const multiplyMat4 = (a: Mat4, b: Mat4):Mat4 => {
 /**
  * Ignoring 'w'.
  */
-const multiplyVec3 = (a: Mat4, b: Vec3): Vec3 => {
+const crossMat4Vec3 = (a: Mat4, b: Vec3): Vec3 => {
     const [x, y, z] = b;
     const A = (row:number, col:number) => a[_addr(row, col)];
 
@@ -187,14 +187,14 @@ const multiplyVec3 = (a: Mat4, b: Vec3): Vec3 => {
     ];
 }
 
-export function multiply(a:Mat4, b:Vec3): Vec3;
-export function multiply(a:Mat4, b:Mat4): Mat4;
-export function multiply(a: Mat4, b: Mat4|Vec3): Mat4|Vec3 {
-    if (b.length === 16) {
-        return multiplyMat4(a,b);
-    } else if (b.length === 3) {
-        return multiplyVec3(a,b);
-    }
+export function cross(a:Vec3, b:Vec3): Vec3;
+export function cross(a:Mat4, b:Vec3): Vec3;
+export function cross(a:Mat4, b:Mat4): Mat4;
+export function cross(a:Mat4|Vec3, b:Mat4|Vec3): Mat4|Vec3 {
+    if (isVec3(a) && isVec3(b)) return crossVec3Vec3(a as Vec3,b as Vec3);
+    if (isMat4(a) && isMat4(b)) return crossMat4Mat4(a as Mat4, b as Mat4);
+    if (isMat4(a) && isVec3(b)) return crossMat4Vec3(a as Mat4, b as Vec3);
+
     throw new RangeError();
 };
 

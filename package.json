@@ -1,6 +1,6 @@
 {
   "name": "@tonious/manifold-extras",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Extra tools for use with manifold-3d",
   "homepage": "https://github.com/tonious/manifold-extras#readme",
   "bugs": {
@@ -33,9 +33,12 @@
       "types": "./dist/chamfer.d.ts",
       "module": "./dist/chamfer.js"
     },
-    "wireframe": {
-      "types": "./dist/wireframe.d.ts",
-      "module": "./dist/wireframe.js"
+    "hershey": {
+      "module": "./dist/hershey.js"
+    },
+    "intersection": {
+      "types": "./dist/intersection.d.ts",
+      "module": "./dist/intersection.js"
     },
     "math": {
       "types": "./dist/math.d.ts",
@@ -44,11 +47,15 @@
     "meshutil": {
       "types": "./dist/meshutil.d.ts",
       "module": "./dist/meshutil.js"
+    },
+    "wireframe": {
+      "types": "./dist/wireframe.d.ts",
+      "module": "./dist/wireframe.js"
     }
   },
   "scripts": {
     "build": "rollup -c",
-    "prepare": "npm run build",
+    "prepare": "npm run clean && npm run build",
     "clean": "rm -fr dist && tsc --build --clean"
   },
   "devDependencies": {
