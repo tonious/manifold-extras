@@ -1,13 +1,9 @@
 import {Manifold, Vec3, GLTFMaterial, setMaterial} from 'manifold-3d/manifoldCAD';
-import * as math from './math.ts';
-import * as wireframe from './wireframe.ts';
-
-type Segment = wireframe.Segment;
-const {add, cross, equals, length, sub, dot, scale, normalize} = math.Vec3;
-const {rotateAlign} = math.Mat4;
-const {hull} = Manifold;
-
-const results:Array<Manifold> = [];
+import type {Segment} from './math.ts';
+import {
+  add, cross, length, sub, dot, scale, normalize,
+  rotateAlign, translate, multiply
+} from './math.ts';
 
 const signs = (dis:number, tolerance=1e-3):Array<number> => {
     if (dis >= tolerance) return [-1,+1]; // Two roots.
@@ -38,7 +34,7 @@ export function segmentCylinder(seg:Segment, axis:Segment, radius:number, endcap
     const dis = nc**2 + radius**2 - dot(c,c);
     for (const sign of signs(dis)) {
         const d = nc + sign*Math.sqrt(dis);
-        if (d<0 || d>l) continue; // Point is soutside segment.
+        if (d<0 || d>l) continue; // Point is outside segment.
 
         const t = dot(a,sub(scale(n,d),b));
         if (t<-radius || (t>0 && t<h) || t>(h+radius)) continue;
@@ -74,6 +70,8 @@ export function segmentCylinder(seg:Segment, axis:Segment, radius:number, endcap
   return results.map(d => add(seg[0], scale(n,d)));
 }
 
+const results:Array<Manifold> = [];
+
 const baseMaterial:GLTFMaterial = {
   baseColorFactor: [1,1,0],
   alpha: 0.5, doubleSided: true
@@ -92,11 +90,11 @@ const intersectionMaterial:GLTFMaterial = {
 const cylinder = (axis:Segment, radius:number=0.1, material=rayMaterial) => {
   const naxis = normalize(sub(axis[1],axis[0]));
   let geom = Manifold.cylinder(length(sub(axis[1],axis[0])), radius);
-  if (!equals(naxis,[0,0,1])) {
-    const mRot = rotateAlign([0,0,1],naxis)
-    geom = geom.transform(mRot);
-  }
-  return setMaterial(geom.translate(axis[0]), material);
+
+  const mRot = rotateAlign([0,0,1],naxis);
+  const mTrans = translate(axis[0]);
+  geom = geom.transform(multiply(mTrans, mRot));
+  return setMaterial(geom, material);
 }
 
 const sphere = (p:Vec3, radius:number=0.5, material = intersectionMaterial) => {
@@ -105,13 +103,13 @@ const sphere = (p:Vec3, radius:number=0.5, material = intersectionMaterial) => {
 
 export default () => {
   const radius = 5;
-  //const axis:Segment = [[0,-5,0],[0,20,30]];
-  const axis:Segment = [[0,20,30],[0,-5,0]];
+  const axis:Segment = [[0,-5,0],[0,20,30]];
+  //const axis:Segment = [[0,20,30],[0,-5,0]];
 
-  //const edge:Segment = [[-30,0,0],[30,0,15]]
-  const edge:Segment = [[-10,-15,0],[0,-5,-1]]
+  const edge:Segment = [[-30,0,0],[30,0,15]]
+  //const edge:Segment = [[-10,-15,0],[0,-5,-1]]
 
-  results.push(setMaterial(hull([sphere(axis[0],radius),sphere(axis[1],radius)]), baseMaterial));
+  results.push(setMaterial(Manifold.hull([sphere(axis[0],radius),sphere(axis[1],radius)]), baseMaterial));
 
   results.push(cylinder(edge));
 

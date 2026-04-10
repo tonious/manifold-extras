@@ -1,14 +1,13 @@
 import {setMaterial, Mesh, Manifold, CrossSection} from 'manifold-3d/manifoldCAD';
 import type {GLTFMaterial} from 'manifold-3d/manifoldCAD';
 import {halfedgesToSegments, segmentsToManifolds, wireframe} from './wireframe.ts';
-import type {Segment} from './wireframe.ts';
 import type {HalfEdge} from './meshutil.ts';
 import {runEdges, uniqueHalfedges, vertexPosition, curvedTriangles, triangleVertices, halfedgeKey} from './meshutil.ts';
 import {batchUnion} from './batch.ts';
-import * as math from './math.ts';
+import {length, sub, constrainToSegment, lerp} from './math.ts';
+import type {Segment} from './math.ts';
 import { segmentCylinder } from './intersection.ts';
 
-const {length, sub, constrainToSegment, lerp} = math.Vec3;
 const {cube, union} = Manifold;
 
 function segmentTriangles(mesh:Mesh, triangles:Iterable<number>, edges:Array<HalfEdge>, radius:number=1) {

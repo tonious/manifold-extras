@@ -1,13 +1,11 @@
 import {Mesh, Manifold, setMaterial} from 'manifold-3d/manifoldCAD';
-import type {Vec3, GLTFMaterial} from 'manifold-3d/manifoldCAD';
+import type {GLTFMaterial} from 'manifold-3d/manifoldCAD';
 import { batchUnion } from './batch.ts';
+import type {Segment} from './math.ts';
 import type {HalfEdge} from './meshutil.ts';
 import { uniqueHalfedges, faceEdges, halfedgesOf, vertexNormalsOf, halfedgeKey } from './meshutil.ts';
 
-/**
- * A segment connects two 3d points, each defined as a Vec3.
- */
-export type Segment = [Vec3, Vec3];
+
 
 /**
  * Convert half-edges belonging to a mesh to segments in free space.

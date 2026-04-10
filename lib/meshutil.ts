@@ -1,9 +1,7 @@
 import {Mesh} from 'manifold-3d/manifoldCAD';
 import type {Vec3} from 'manifold-3d/manifoldCAD';
-import * as math from './math.ts';
-
-const {length, add, equals} = math.Vec3;
-type Segment = math.Vec3.Segment;
+import {length, add, equals} from './math.ts';
+import type {Segment} from './math.ts';
 
 /**
  * A halfedge connects two numbered vertices, presumably belonging to the same Mesh.
