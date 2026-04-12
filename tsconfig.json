@@ -18,7 +18,8 @@
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "typeRoots": ["./node_modules/@types", "./lib/types"],
-    "declarationDir": "dist"
+    "declarationDir": "./dist",
+    "rootDir": "."
   },
   "include": [
     "lib/**/*.ts",
