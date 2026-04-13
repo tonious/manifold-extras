@@ -1,6 +1,4 @@
-import type { Mat4, Vec3 } from 'manifold-3d/manifoldCAD';
-
-export type { Vec3 };
+import { Mat4, Vec3 } from 'manifold-3d/manifoldCAD';
 
 export const clamp = (t:number, low:number=0.0, high:number=1.0) => ((t<low) ? low : ((t>high) ? high : t));
 export const sign = (t:number) => (t<0 ? -1 : (t>0 ? +1 : 0));
@@ -10,9 +8,23 @@ export const sign = (t:number) => (t<0 ? -1 : (t>0 ? +1 : 0));
  */
 export type Segment = [Vec3,Vec3];
 
+/**
+ * A triangle in 3d space.
+ * 
+ * The first point is the 'origin' of the triangle when projecting or finding normals.
+ */
+export type Triangle = [Vec3, Vec3, Vec3];
+
 export const isSegment = (a:any) => {
     if (!Array.isArray(a)) return false;
     if (a.length !== 2) return false;
+    if (a.find(x => !isVec3(x))) return false;
+    return true;
+}
+
+export const isTriangle = (a:any) => {
+    if (!Array.isArray(a)) return false;
+    if (a.length !== 3) return false;
     if (a.find(x => !isVec3(x))) return false;
     return true;
 }
@@ -52,12 +64,18 @@ export const scale = (v: Vec3, s: number): Vec3 => {
     return [ax * s, ay * s, az * s];
 };
 
-export const normalize = (v: Vec3|Segment): Vec3 => {
+const normalizeTriangle = ([a, b, c]:Triangle): Vec3 => {
+    return normalize(cross(sub(b,a), sub(c,a)))
+}
+
+export const normalize = (v: Vec3|Segment|Triangle): Vec3 => {
     if (isVec3(v)) {
-        return scale(v as Vec3, 1 / length(v));
+        return scale(v as Vec3, 1 / length(v as Vec3));
     } else if (isSegment(v)) {
         const [p1,p2] = v as Segment;
         return normalize(sub(p2,p1));
+    } else if (isTriangle(v)) {
+        return normalizeTriangle(v as Triangle);
     }
     throw new TypeError();
 };

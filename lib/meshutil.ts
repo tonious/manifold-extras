@@ -2,6 +2,8 @@ import {Mesh} from 'manifold-3d/manifoldCAD';
 import type {Vec3} from 'manifold-3d/manifoldCAD';
 import {length, add, equals} from './math.ts';
 import type {Segment} from './math.ts';
+import {segmentCylinder} from './intersection.ts';
+import {halfedgesToSegments} from './wireframe.ts';
 
 /**
  * A halfedge connects two numbered vertices, presumably belonging to the same Mesh.
@@ -36,19 +38,33 @@ export function vertexPosition(mesh:Mesh, vertex:number) {
   return [...mesh.vertProperties.slice(offset, offset+3)] as Vec3
 }
 
-export function mergedVertex(mesh:Mesh, vertex:number) {
-  let vertMerge:Map<number, number> | null = null;
+function getVertMerge(mesh:Mesh):Map<number, number>  {
   if (meshVertMergeCache.has(mesh)) {
-    vertMerge = meshVertMergeCache.get(mesh) ?? null;
-  } else {
-    vertMerge = new Map();
-    for (let i = 0; i < mesh.mergeFromVert.length; i++) {
-      vertMerge.set(mesh.mergeFromVert[i], mesh.mergeToVert[i]);
-    }
-    meshVertMergeCache.set(mesh, vertMerge);
-  }
+    return meshVertMergeCache.get(mesh)!;
+  } 
 
-  return vertMerge?.has(vertex) ? vertMerge.get(vertex)! : vertex;
+  const vertMerge = new Map();
+  for (let i = 0; i < mesh.mergeFromVert.length; i++) {
+    vertMerge.set(mesh.mergeFromVert[i], mesh.mergeToVert[i]);
+  }
+  meshVertMergeCache.set(mesh, vertMerge);
+  return vertMerge;
+}
+
+export function mergedVertex(mesh:Mesh, vertex:number) {
+  const vertMerge = getVertMerge(mesh);
+  return vertMerge.has(vertex) ? vertMerge.get(vertex)! : vertex;
+}
+
+export function mergedVertices(mesh:Mesh, vertex:number) {
+  const vertMerge = getVertMerge(mesh);
+  if (vertMerge.has(vertex)) return [vertMerge!.get(vertex)!];
+
+  const vertices = vertMerge.entries()
+    .filter(([, mergeTo]) => mergeTo === vertex)
+    .map(([mergeFrom,]) => mergeFrom);
+
+  return [...vertices];
 }
 
 export function halfedgeKey (mesh:Mesh, halfedge:HalfEdge): string {
@@ -157,7 +173,7 @@ export function* faceTriangles(
   }
 }
 
-export function* curvedTriangles(mesh:Mesh, triangles?:Iterable<number>): Iterable<number> {
+export function* curvedTriangles(mesh:Mesh, triangles?:Iterable<number>, tolerance:number=1e-3): Iterable<number> {
   if (mesh.numProp < 6) {
     throw new Error("No vertex normals found.");
   }
@@ -165,11 +181,46 @@ export function* curvedTriangles(mesh:Mesh, triangles?:Iterable<number>): Iterab
   for (const tri of (triangles ?? new Array(mesh.numTri).keys())) {
     const triVerts = triangleVertices(mesh, tri);
     const [n1, n2, n3] = triVerts.map(v => vertexNormal(mesh, v));
-    if (!(equals(n1, n2, 1e-3) && equals(n1, n3, 1e-3))) {
+    if (!(equals(n1, n2, tolerance) && equals(n1, n3, tolerance))) {
       yield(tri);
     }
   }
 }
+
+export function* flatTriangles(mesh:Mesh, triangles?:Iterable<number>,  tolerance:number=1e-3): Iterable<number> {
+  if (mesh.numProp < 6) {
+    return triangles;
+  }
+
+  for (const tri of (triangles ?? new Array(mesh.numTri).keys())) {
+    const triVerts = triangleVertices(mesh, tri);
+    const [n1, n2, n3] = triVerts.map(v => vertexNormal(mesh, v));
+    if (equals(n1, n2, tolerance) && equals(n1, n3, tolerance)) {
+      yield(tri);
+    }
+  }
+}
+
+
+export function* intersectingTriangles(mesh:Mesh, edges:Array<HalfEdge>, radius:number=1, triangles?:Iterable<number>) {  
+  const segments:Array<Segment> = [...halfedgesToSegments(mesh, edges)];
+
+  for (const tri of (triangles ?? new Array(mesh.numTri).keys())) {
+    let found = false;
+    for (const tedge of halfedgesOf(mesh,[tri])) {
+      const tsegment = tedge.map(v => vertexPosition(mesh,v)) as Segment;
+      for (const segment of segments) {
+        if (segmentCylinder(tsegment, segment, radius).length) {
+          found = true;
+          break;
+        }
+      }
+      if(found) break;
+    }
+    if (found) yield tri;    
+  }
+}
+
 
 export function* vertexNormalsOf(mesh:Mesh, triangles?:Iterable<number>):Iterable<Segment> {
   const seen = new Set();
@@ -184,4 +235,4 @@ export function* vertexNormalsOf(mesh:Mesh, triangles?:Iterable<number>):Iterabl
       yield [position, add(position, normal)];
     }
   }
-};
+}
