@@ -1,5 +1,7 @@
 import {Mesh} from 'manifold-3d/manifoldCAD';
 import type {Vec3} from 'manifold-3d/manifoldCAD';
+import tarjan from "@rtsao/scc";
+
 import {length, add, equals} from './math.ts';
 import type {Segment} from './math.ts';
 import {segmentCylinder} from './intersection.ts';
@@ -235,4 +237,49 @@ export function* vertexNormalsOf(mesh:Mesh, triangles?:Iterable<number>):Iterabl
       yield [position, add(position, normal)];
     }
   }
+}
+
+
+/**
+ * Split an unordered set of halfedges into ordered chordless cycles.
+ */
+export function halfEdgeCycles(edges:Iterable<HalfEdge>) {
+  const dfs = (nodes: Set<number>) => {
+    const visited: Set<number> = new Set();
+    const recurse = (recStack:Array<number>) => {
+      const prevNode = recStack[recStack.length-1];
+      const adjacent = digraph.get(prevNode)!
+      for(const u of adjacent) {
+        if (visited.has(u)) {
+          // Trim back-edges.
+          cycles.push([...recStack.slice(recStack.indexOf(u))]);
+          for (const n of recStack.slice(0,recStack.indexOf(u))) {
+            visited.delete(n);
+          }
+        } else {
+          visited.add(u);
+          recurse([...recStack, u]);
+        }
+      }
+    }
+    recurse([nodes.values().next().value!]);
+  }
+
+  const digraph:Map<number, Set<number>> = new Map();
+  for (const [v1, v2] of edges) {
+    if (!digraph.has(v1)) digraph.set(v1, new Set());
+    digraph.get(v1)!.add(v2)
+  }
+
+  const cycles:Array<Array<number>> = [];
+  const cycleEdges:Array<Array<HalfEdge>> = [];
+  for (const subgraph of tarjan(digraph)) dfs(subgraph);
+  for (const cycle of cycles) {
+    const edges:Array<HalfEdge> = [];
+    for (let i=0; i<cycle.length; i++) {
+      edges.push([cycle[i], cycle[(i+1)%cycle.length]] as HalfEdge);
+    }
+    cycleEdges.push(edges);
+  }
+  return cycleEdges;
 }
