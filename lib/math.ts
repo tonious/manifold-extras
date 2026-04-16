@@ -49,7 +49,9 @@ export const lengthSq = (v: Vec3): number => {
     return ax ** 2 + ay ** 2 + az ** 2;
 };
 
-export const length = (v: Vec3|Segment): number => {
+export function length(v: Vec3): number
+export function length(s: Segment): number
+export function length(v: Vec3|Segment): number {
     if (isVec3(v)) {
         return Math.sqrt(lengthSq(v as Vec3));
     } else if (isSegment(v)) {
@@ -291,3 +293,58 @@ export const transpose = (a: Mat4): Mat4 => {
     }
     return m;
 };
+
+export type Barycentric = [number, number, number];
+
+/**
+ * Convert Cartesian to barycentric coordinates.
+ * 
+ * Triangle t is more like triangular prism t -- it extends along the line of the normal.
+ * 
+ * @see https://math.stackexchange.com/questions/4322/check-whether-a-point-is-within-a-3d-triangle
+ * @see https://gamedev.stackexchange.com/questions/23743/whats-the-most-efficient-way-to-find-barycentric-coordinates
+ */
+export const barycentric = (p:Vec3, t:Triangle): Barycentric => {
+    const [a,b,c] = t;
+    const n = normalize(t);
+    const areaABC = dot(n,cross(sub(b,a),sub(c,a)));
+    const areaPBC = dot(n,cross(sub(b,p),sub(c,p)));
+    const areaPCA = dot(n,cross(sub(c,p),sub(a,p)));
+
+    const alpha = areaPBC / areaABC;
+    const beta  = areaPCA / areaABC;
+    const gamma = 1 - alpha - beta;
+    return [alpha, beta, gamma];
+}
+
+/**
+ * Is this point (given Barycentric coordinates) in it's triangle?
+ * @see https://math.stackexchange.com/questions/4322/check-whether-a-point-is-within-a-3d-triangle
+ */
+export const barycentricInTriangle = (p:Barycentric, tolerance:number=1e-3):boolean => {
+    const [alpha, beta, gamma] = p;
+
+    if (alpha<0 || alpha>1 || beta<0 || beta>1 || gamma<0 || gamma>1) return false;
+    return Math.abs(1-alpha+beta+gamma) <= tolerance;
+}
+
+/**
+ * Is point p within triangle t?
+ * @see https://math.stackexchange.com/questions/544946/determine-if-projection-of-3d-point-onto-plane-is-within-a-triangle
+ * @see https://gamedev.stackexchange.com/questions/28781/easy-way-to-project-point-onto-triangle-or-plane/152476#152476
+ */
+export const pointInTriangle = (p:Vec3, t:Triangle, tolerance:number=1e-3): boolean =>
+    pointInPlane(p, normalize(t), t[0], tolerance)
+    && barycentricInTriangle(barycentric(p, t), tolerance);
+
+/**
+ * Find the distance from point a to the plane defined by normal n and point p.
+ */
+export const distanceToPlane = (a:Vec3, n:Vec3=[0,0,1], p:Vec3=[0,0,0]) =>
+    length(project(sub(a,p),n));
+
+/**
+ * Check if point a is within the plane defined by normal n and point p.
+ */
+export const pointInPlane = (a:Vec3, n:Vec3=[0,0,1], p:Vec3=[0,0,0], tolerance:number=1e-3) => 
+    Math.abs(dot(n,sub(a,p))) <= tolerance;

@@ -13,6 +13,7 @@ import {halfedgesToSegments} from './wireframe.ts';
 export type HalfEdge = [number, number];
 
 const meshEdgeFaceCache: Map<Mesh, Map<string, Array<[number, number]>>> = new Map();
+const meshEdgeOppositeCache: Map<Mesh, Map<string, Array<HalfEdge>>> = new Map();
 const meshVertMergeCache: Map<Mesh, Map<number, number>> = new Map();
 
 export function triangleRun(mesh:Mesh, t:number) {
@@ -43,7 +44,7 @@ export function vertexPosition(mesh:Mesh, vertex:number) {
 function getVertMerge(mesh:Mesh):Map<number, number>  {
   if (meshVertMergeCache.has(mesh)) {
     return meshVertMergeCache.get(mesh)!;
-  } 
+  }
 
   const vertMerge = new Map();
   for (let i = 0; i < mesh.mergeFromVert.length; i++) {
@@ -69,13 +70,32 @@ export function mergedVertices(mesh:Mesh, vertex:number) {
   return [...vertices];
 }
 
+/**
+ * Should rename this 'edgeKey' as it maps half-edges together.
+ */
 export function halfedgeKey (mesh:Mesh, halfedge:HalfEdge): string {
   const merged = halfedge.map((v:number) => mergedVertex(mesh, v));
   return `[${Math.min(...merged)},${Math.max(...merged)}]`;
 }
 
+export function halfedgeOpposite(mesh:Mesh, edge:HalfEdge): HalfEdge {
+  if (!meshEdgeOppositeCache.has(mesh)) meshEdgeOppositeCache.set(mesh, new Map());
+  const cache = meshEdgeOppositeCache.get(mesh)!;
+  const key = halfedgeKey(mesh, edge);
+  if (!cache.has(key)) {
+    cache.set(key, [...halfedgesOf(mesh)].filter(other => key === halfedgeKey(mesh, other)));
+  }
+  const [v1, v2] = edge;
+  const candidates = cache.get(key)!.filter(([ov1,ov2]) => (v1 !== ov1 || v2 !== ov2));
+  if (candidates.length !== 1) throw new Error(`HalfEdge ${key} has ${candidates.length} opposite edges.`);
+  const [opposite] = candidates;
+  return opposite;
+}
+
 /**
- * Map halfedges to faces they border.
+ * Map edges to faces they border.
+ * 
+ * FIXME: Rework for half-edges.
  */
 function meshEdgeFaceMap(mesh:Mesh):Map<string, Array<[originalID:number, faceID:number]>> {
   if (!meshEdgeFaceCache.has(mesh)) {

@@ -6,10 +6,14 @@ import type {HalfEdge} from './meshutil.ts';
 import {
   halfedgeKey, runEdges, uniqueHalfedges, halfedgesOf, halfEdgeCycles,
   curvedTriangles, faceTriangles, flatTriangles,
-  vertexPosition, vertexNormal, mergedVertices
+  vertexPosition, vertexNormal,
+  triangleVertices
 } from './meshutil.ts';
-import {length, sub, constrainToSegment, scale, add, equals, projectToPlane, normalize} from './math.ts';
-import type {Segment} from './math.ts';
+import {
+  sub, scale, add, equals, cross, length,  normalize,
+  constrainToSegment, pointInTriangle
+} from './math.ts';
+import type {Segment, Triangle} from './math.ts';
 import { segmentCylinder } from './intersection.ts';
 import { batchUnion } from './batch.ts';
 
@@ -28,6 +32,8 @@ function alignedOffset(mesh:Mesh, edges:Array<HalfEdge>, radius:number=1, triang
     segments.set(key, edge.map(v => vertexPosition(mesh, v)) as Segment);
   }
 
+  // We're radius away from _this_ segment, but there exists another closer 
+  // segment leaving this point inside radius.
   const pointIsTooClose = (pt:Vec3) => {
     const closerSegment = segments.values()
       .map(seg => length(sub(pt,constrainToSegment(seg, pt))))
@@ -41,11 +47,9 @@ function alignedOffset(mesh:Mesh, edges:Array<HalfEdge>, radius:number=1, triang
     const tsegment = tedge.map(v => vertexPosition(mesh, v)) as Segment;
     for (const [key,segment] of segments.entries()) {
       const pts = segmentCylinder(tsegment, segment, radius)
-      for (const pt of pts) {
-        // We're radius away from _this_ segment, but there exists another closer 
-        // segment leaving this point inside radius.
-        if (pointIsTooClose(pt)) continue;
-
+        .filter(pt => !pointIsTooClose(pt))
+      const [pt] = pts;
+      if (pt) {
         if (!segmentPoints.has(key)) segmentPoints.set(key, []);
         segmentPoints.get(key)!.push(pt);
       }
@@ -61,31 +65,57 @@ function alignedOffset(mesh:Mesh, edges:Array<HalfEdge>, radius:number=1, triang
  * Todo: Need to ensure these actually land on a triangle within the list.
  * Todo: normals can be inferred as part of this path.
  */
-function offset(mesh:Mesh, edges:Array<HalfEdge>, radius:number=1, triangles?:Iterable<number>) {  
+function offset(mesh:Mesh, edges:Array<HalfEdge>, radius:number=1, triangles?:Iterable<number>, tolerance:number=1e-3) {  
   const segments:Map<string,Segment> = new Map();
   const segmentPoints:Map<string, Array<Vec3>> = new Map();
-  typeof triangles;
-
+  
   for (const edge of edges) {
     const key = halfedgeKey(mesh, edge);
     const segment = edge.map(v => vertexPosition(mesh, v)) as Segment;
     segments.set(key, segment);
   }
 
-  for (const edge of edges) {
-    const key = halfedgeKey(mesh, edge);
-    for (const v of edge.map(v => [v, ...mergedVertices(mesh, v)]).flat()) {
-      // FIXME huge hack! This is only for testing, and very limited at that.
-      const p = vertexPosition(mesh, v);
-      const n = vertexNormal(mesh, v);
+  for (const t of (triangles ?? new Array(mesh.numTri).keys())) {
+    const tri = triangleVertices(mesh,t).map(v => vertexPosition(mesh, v)) as Triangle;
+    const n = normalize(tri);
+    for (const edge of edges) {
+      const na = normalize(sub(vertexPosition(mesh, edge[1]),vertexPosition(mesh, edge[0])))
 
-      if (equals(n,[0,0,1]) || equals(n,[0,0,-1])) continue;
+      const checkPoint = (pr:Vec3) => {
+        if (!pointInTriangle(pr, tri)) return;
+        if (!segmentPoints.has(key)) segmentPoints.set(key, []);
+        segmentPoints.get(key)!.push(pr);
+      }
 
-      const nproj = normalize(projectToPlane(n,[0,0,1]))
+      // simple projection according to normal.
+      const proj1 = (v: number, v2: number) => {
+        const p = vertexPosition(mesh, v)
+        const pn = vertexNormal(mesh, v2)
+        return checkPoint(add(p, scale(pn,radius)))
+      }
 
-      //console.log({n,p,nproj})
-      if (!segmentPoints.has(key)) segmentPoints.set(key, []);
-      segmentPoints.get(key)!.push(add(p,scale(nproj,radius)))
+      // project along axis of plane intersections.  Dodgy.
+      const proj2 = (v: number, v2: number) => {
+        const p = vertexPosition(mesh, v)
+        const pn = vertexNormal(mesh, v2)
+        const axis = equals(n,pn) ? n : cross(pn, na);
+        return checkPoint(add(p, scale(axis,radius)))
+      }
+
+      // The actual intersection is between a triangle and a circle, both in 3d space.
+      // In this particular case, they should never be coplanar.
+      // Right now, I'm preselecting curved vs flat triangles but I don't think that's
+      // actually doable before looking at the halfedge.  One halfedge may be curved while
+      // the other is not.  E.g.: intersection of a plane and an orthagonal cylinder.
+
+      const key = halfedgeKey(mesh, edge);
+
+      proj2(edge[0], edge[0]);
+      proj2(edge[1], edge[1]);
+
+      //proj2(edge[0], otherEdge[0]);
+      //proj1(edge[1], edge[1]);
+      //proj1(edge[1], otherEdge[1]);
     }
   }
   return segmentPoints;
@@ -94,6 +124,7 @@ function offset(mesh:Mesh, edges:Array<HalfEdge>, radius:number=1, triangles?:It
 const getPts = (mesh:Mesh, runID:number, radius:number=1):Map<string, Array<Vec3>> => {
   console.log(`Collecting points from run ${runID}...`)
   const triangles = [...faceTriangles(mesh, runID)];
+  //const triangles = [24]
   const edges = [...uniqueHalfedges(mesh, runEdges(mesh, triangles))]
   const curved = alignedOffset(mesh, edges, radius, curvedTriangles(mesh, triangles));
   const flat = offset(mesh, edges, radius, flatTriangles(mesh, triangles));
@@ -103,8 +134,7 @@ const getPts = (mesh:Mesh, runID:number, radius:number=1):Map<string, Array<Vec3
     const key = halfedgeKey(mesh, edge);
     const curvedPts = curved.get(key) ?? [];
 
-    // Fixme.  This ain't right.
-    const flatPts = curvedPts.length > 0 ? [] : flat.get(key) ?? [];
+    const flatPts = flat.get(key) ?? [];
 
     edgePts.set(key,[curvedPts, flatPts].flat());
     //console.log({key, curvedPts, flatPts})
@@ -131,11 +161,11 @@ const example = () => {
   const shapeMaterial:GLTFMaterial = {
     baseColorFactor: [0,1,1],
     alpha: 0.5,  doubleSided: true,
-    attributes: ['NORMAL']
+  //  attributes: ['NORMAL']
   }
   const filletMaterial:GLTFMaterial = {
     baseColorFactor: [1,0,1],
-    alpha: 0.5,  doubleSided: true,
+    //alpha: 0.5,  doubleSided: true,
     attributes: ['NORMAL']
   }
 
@@ -145,13 +175,15 @@ const example = () => {
     //Manifold.cube([35,35,25], true).translate([-35/2,0,25/2+0.01]).calculateNormals(0,minSharpAngle).add(Manifold.cylinder(25,35/2,35/2).translate([0,0,0.01]).calculateNormals(0,minSharpAngle)).translate([10,0,0]),
     //Manifold.cylinder(25,35/2,35/2,16).translate([0,0,0.1]).calculateNormals(0,minSharpAngle),
     //Manifold.cylinder(50,35/2, 35/2).translate([0,0,-15]).rotate([0,30,0]).calculateNormals(0,minSharpAngle),
-    torus(10,25).rotate([-60,0,0]).translate([0,0,22]).calculateNormals(0,minSharpAngle),
-    //torus(10,25).rotate([90,0,0]).translate([0,0,25]).calculateNormals(0,minSharpAngle),
+    //torus(10,25).rotate([-60,0,0]).translate([0,0,22]).calculateNormals(0,minSharpAngle),
+    torus(10,25).rotate([90,0,0]).translate([0,0,25]).calculateNormals(0,minSharpAngle),
   ].map(shape => setMaterial(shape,shapeMaterial));
 
   const showpts:Array<Manifold> = [];
-  const s = setMaterial(Manifold.sphere(0.5),{baseColorFactor:[0,0,0], unlit: true});
-  const st = (p:Vec3) => showpts.push(s.translate(p));
+  const s = Manifold.sphere(0.5,16);
+  const st = (p:Vec3,c:Vec3=[0,0,0]) => showpts.push(
+    setMaterial(s.translate(p),{baseColorFactor:c, unlit: true})
+  );
 
   const results = []
   for (const shape of shapes) {
@@ -160,62 +192,54 @@ const example = () => {
 
     // Two opposite paths around our intersection line.
     // Not sure this should depend on runOriginalID, tbh.
-    const allPtsA = getPts(mesh, mesh.runOriginalID[0], chamferR);
-    const allPtsB = getPts(mesh, mesh.runOriginalID[1], chamferR);
+    const allPtsA = getPts(mesh, base.originalID(), chamferR);
+    const allPtsB = getPts(mesh, shape.originalID(), chamferR);
 
     console.log(`Collecting chamfer volumes...`);
 
     // Turn an unordered array of half edges (forming the intersection contour)...
     const edges = [...uniqueHalfedges(mesh, runEdges(mesh))]
     // ...into cycles of ordered half edges.
-    const cycles = halfEdgeCycles(edges);
 
-    const chamferParts = [];
-    for (const edge of cycles[cycles.length-1].slice(16,32)) {
-      const key = halfedgeKey(mesh, edge);
+    const chamferParts:Array<Manifold> = [];
+    for (const edge of edges) {
       const segment = edge.map(v => vertexPosition(mesh,v)) as Segment;
+      const [v1, v2] = edge;
+      const adjacent = edges
+        .filter(e => e.includes(v1)|| e.includes(v2))
+        .filter(([ev1, ev2]) => ev1 !== v1 && ev2 !== v2);
 
-      if (!(allPtsA.has(key) && allPtsB.has(key))) {
-        console.log({edge, key, ptsA: allPtsA.has(key), ptsB: allPtsB.has(key)});
-        continue;
-      }
-      const ptsA = allPtsA.get(key) ?? [];
-      const ptsB = allPtsB.get(key) ?? [];
-
-      const pts = [ptsA, ptsB, segment].flat();
-      for (const pt of pts) st(pt);
-
-      const vol = Manifold.hull(pts);
-      if (vol.isEmpty()) {
-        console.log({edge, key, ptsA, ptsB: ptsB, segment, volume:vol.volume()});
-        continue;
+      if (adjacent.length > 2) {
+        console.log(`${edge} has ${adjacent.length} neighbours.`);
+        //continue;
       }
 
-      chamferParts.push(setMaterial(vol.calculateNormals(0,0),filletMaterial));
+      const ptsA = [edge, /*...adjacent*/].map(e => allPtsA.get(halfedgeKey(mesh,e)) ?? []).flat()
+      const ptsB = [edge, /*...adjacent*/].map(e => allPtsB.get(halfedgeKey(mesh,e)) ?? []).flat()
+      for (const pt of ptsA)    st(pt, [1,0,0]); // Flat.
+      for (const pt of ptsB)    st(pt, [0,1,0]);
+      for (const pt of segment) st(pt, [0,0,1]);
+
+      //const pts = [segment, ptsA].flat();
+
+      //const vol = Manifold.hull(pts);
+      //chamferParts.push(setMaterial(vol.calculateNormals(0,0),filletMaterial));
     }
     const chamfer = union(chamferParts)
 
-
-    //results.push(wireframe(chamfer))
     console.log(`...Done!`)
-
-    //results.push(batchUnion([...curvedPts.values(), ...flatPts.values()].flat().map(st)))
-
-    //const flatTris = [...arbitraryOffset(mesh, flat, segments, chamferR)];
     // Show wireframe + normals.
     if (false) results.push(wireframe(mesh));
 
     results.push(geom);
     results.push(chamfer);
     //results.push(chamfer.add(geom))
-    //console.log({segments})
-    //console.log(mergedVertices(mesh,4))
   }
 
-  results.push(batchUnion(showpts));
+  results.push(...showpts);
 
   // OS X preview is a little more responsive at this scale.
-  return results.map(geom => geom.scale(1000));
+  return true ? results.map(geom => geom.scale(1000)) : results;
 }
 
 export default example;
