@@ -12,7 +12,7 @@ import {halfedgesToSegments} from './wireframe.ts';
  */
 export type HalfEdge = [number, number];
 
-const meshEdgeFaceCache: Map<Mesh, Map<string, Array<[number, number]>>> = new Map();
+const meshEdgeFaceCache: Map<Mesh, Map<string, [number, number]>> = new Map();
 const meshEdgeOppositeCache: Map<Mesh, Map<string, Array<HalfEdge>>> = new Map();
 const meshVertMergeCache: Map<Mesh, Map<number, number>> = new Map();
 
@@ -71,9 +71,26 @@ export function mergedVertices(mesh:Mesh, vertex:number) {
 }
 
 /**
- * Should rename this 'edgeKey' as it maps half-edges together.
+ * A key that matches only one side of a halfedge.
+ * 
+ * A mesh reference is not necessary as we do not merge vertices.
  */
-export function halfedgeKey (mesh:Mesh, halfedge:HalfEdge): string {
+export function halfedgeKey (halfedge:HalfEdge): string {
+  return JSON.stringify(halfedge);
+}
+
+export function edgeEquals(mesh:Mesh, e1:HalfEdge, e2:HalfEdge): boolean {
+  return edgeKey(mesh, e1) === edgeKey(mesh, e2);
+}
+
+export function halfEdgeEquals(e1:HalfEdge, e2:HalfEdge): boolean {
+  return halfedgeKey(e1) === halfedgeKey(e2);
+}
+
+/**
+ * A key that matches either side of a halfedge belonging to Mesh.
+ */
+export function edgeKey (mesh:Mesh, halfedge:HalfEdge): string {
   const merged = halfedge.map((v:number) => mergedVertex(mesh, v));
   return `[${Math.min(...merged)},${Math.max(...merged)}]`;
 }
@@ -81,39 +98,61 @@ export function halfedgeKey (mesh:Mesh, halfedge:HalfEdge): string {
 export function halfedgeOpposite(mesh:Mesh, edge:HalfEdge): HalfEdge {
   if (!meshEdgeOppositeCache.has(mesh)) meshEdgeOppositeCache.set(mesh, new Map());
   const cache = meshEdgeOppositeCache.get(mesh)!;
-  const key = halfedgeKey(mesh, edge);
+  const key = edgeKey(mesh, edge);
   if (!cache.has(key)) {
-    cache.set(key, [...halfedgesOf(mesh)].filter(other => key === halfedgeKey(mesh, other)));
+    cache.set(key, [...halfedgesOf(mesh)].filter(other => edgeEquals(mesh, edge, other)));
   }
-  const [v1, v2] = edge;
-  const candidates = cache.get(key)!.filter(([ov1,ov2]) => (v1 !== ov1 || v2 !== ov2));
-  if (candidates.length !== 1) throw new Error(`HalfEdge ${key} has ${candidates.length} opposite edges.`);
-  const [opposite] = candidates;
+
+  const [opposite, ...extras] = cache.get(key)!.filter(other => !halfEdgeEquals(edge, other));
+  if (!opposite || extras.length>0) {
+    throw new Error(`HalfEdge ${key} has ${extras.length+1} opposite edges.`);
+  }
   return opposite;
 }
 
 /**
- * Map edges to faces they border.
- * 
- * FIXME: Rework for half-edges.
+ * Yield only one half-edge per edge.  This excludes the other half-edge taking merged
+ * vertices into account.
  */
-function meshEdgeFaceMap(mesh:Mesh):Map<string, Array<[originalID:number, faceID:number]>> {
+export function* uniqueHalfedges(mesh:Mesh, halfedges:Iterable<HalfEdge>): Iterable<HalfEdge> {
+  const seen:Set<string> = new Set();
+  for (const halfedge of halfedges) {
+    const key = edgeKey(mesh, halfedge)
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    yield(halfedge);
+  }
+}
+
+/**
+ * Map edges to faces they border.
+ */
+function meshEdgeFaceMap(mesh:Mesh):Map<string, [originalID:number, faceID:number]> {
   if (!meshEdgeFaceCache.has(mesh)) {
-    const faces:Map<string, Array<[originalID:number, faceID:number]>> = new Map();
+    const faces:Map<string, [originalID:number, faceID:number]> = new Map();
     for (let t=0; t<mesh.numTri; t++) {
       const originalID = triangleOriginalID(mesh, t);
       const faceID = mesh.faceID[t];
       for (const halfedge of halfedgesOf(mesh, [t])) {
-        const key = halfedgeKey(mesh, halfedge);
-        if (!faces.get(key)?.find(([id, face]:[number, number]) => id === originalID && face === faceID)) {
-          if (!faces.has(key)) faces.set(key, []);
-          faces.get(key)!.push([originalID, faceID]);
-        }
+        faces.set(halfedgeKey(halfedge), [originalID, faceID]);
       }
     }
     meshEdgeFaceCache.set(mesh, faces);
   }
   return meshEdgeFaceCache.get(mesh)!;
+}
+
+export function runIDof(mesh:Mesh, halfedge:HalfEdge) {
+  const faces = meshEdgeFaceMap(mesh);
+  const [runID] = faces.get(halfedgeKey(halfedge)) ?? [];
+  return runID;
+}
+
+export function faceIDof(mesh:Mesh, halfedge:HalfEdge) {
+  const faces = meshEdgeFaceMap(mesh);
+  const [,faceID] = faces.get(halfedgeKey(halfedge)) ?? [];
+  return faceID;
 }
 
 /**
@@ -138,9 +177,10 @@ export function* halfedgesOf(
  * may have unconnected subsets.
  */
 export function* runEdges(mesh:Mesh, triangles?:Iterable<number>): Iterable<HalfEdge> {
-  const faces = meshEdgeFaceMap(mesh);
-  const isRunEdge = (halfedge:HalfEdge) => 
-      new Set((faces.get(halfedgeKey(mesh, halfedge)) ?? []).map(([id]) => id)).size > 1;
+  const isRunEdge = (thisEdge:HalfEdge) => {
+    const thatEdge = halfedgeOpposite(mesh, thisEdge);
+    return runIDof(mesh,thisEdge) !== runIDof(mesh, thatEdge);
+  };
 
   // Pass halfedges that border two faces.
   for (const halfedge of halfedgesOf(mesh, triangles)) {
@@ -155,27 +195,15 @@ export function* runEdges(mesh:Mesh, triangles?:Iterable<number>): Iterable<Half
  * may have unconnected subsets.
  */
 export function* faceEdges(mesh:Mesh, triangles?:Iterable<number>): Iterable<HalfEdge> {
-  const faces = meshEdgeFaceMap(mesh);
-  const isFaceEdge = (halfedge:HalfEdge) => (faces.get(halfedgeKey(mesh, halfedge)) ?? []).length > 1
+  const isFaceEdge = (thisEdge:HalfEdge) => {
+    const thatEdge = halfedgeOpposite(mesh, thisEdge);
+    return faceIDof(mesh,thisEdge) !== faceIDof(mesh, thatEdge) 
+      || runIDof(mesh,thisEdge) !== runIDof(mesh, thatEdge);
+  };
   
   // Pass halfedges that border two faces.
   for (const halfedge of halfedgesOf(mesh, triangles)) {
     if (isFaceEdge(halfedge)) yield(halfedge);
-  }
-}
-
-/**
- * Yield only unique half-edges.  This excludes the other half-edge taking merged
- * vertices into account.
- */
-export function* uniqueHalfedges(mesh:Mesh, halfedges:Iterable<HalfEdge>): Iterable<HalfEdge> {
-  const seen:Set<string> = new Set();
-  for (const halfedge of halfedges) {
-    const key = halfedgeKey(mesh, halfedge)
-    if (seen.has(key)) continue;
-
-    seen.add(key);
-    yield(halfedge);
   }
 }
 
@@ -195,34 +223,29 @@ export function* faceTriangles(
   }
 }
 
+export function isFlat(mesh:Mesh, triangle:number, tolerance:number=1e-3) {
+  if (mesh.numProp < 6) return true;
+  const triVerts = triangleVertices(mesh, triangle);
+  const [n1, n2, n3] = triVerts.map(v => vertexNormal(mesh, v));
+  return (equals(n1, n2, tolerance) && equals(n1, n3, tolerance));
+}
+
 export function* curvedTriangles(mesh:Mesh, triangles?:Iterable<number>, tolerance:number=1e-3): Iterable<number> {
   if (mesh.numProp < 6) {
     throw new Error("No vertex normals found.");
   }
 
   for (const tri of (triangles ?? new Array(mesh.numTri).keys())) {
-    const triVerts = triangleVertices(mesh, tri);
-    const [n1, n2, n3] = triVerts.map(v => vertexNormal(mesh, v));
-    if (!(equals(n1, n2, tolerance) && equals(n1, n3, tolerance))) {
-      yield(tri);
-    }
+    if (!isFlat(mesh, tri, tolerance)) yield(tri);
   }
 }
+
 
 export function* flatTriangles(mesh:Mesh, triangles?:Iterable<number>,  tolerance:number=1e-3): Iterable<number> {
-  if (mesh.numProp < 6) {
-    return triangles;
-  }
-
   for (const tri of (triangles ?? new Array(mesh.numTri).keys())) {
-    const triVerts = triangleVertices(mesh, tri);
-    const [n1, n2, n3] = triVerts.map(v => vertexNormal(mesh, v));
-    if (equals(n1, n2, tolerance) && equals(n1, n3, tolerance)) {
-      yield(tri);
-    }
+    if (isFlat(mesh, tri, tolerance)) yield(tri);
   }
 }
-
 
 export function* intersectingTriangles(mesh:Mesh, edges:Array<HalfEdge>, radius:number=1, triangles?:Iterable<number>) {  
   const segments:Array<Segment> = [...halfedgesToSegments(mesh, edges)];
@@ -242,7 +265,6 @@ export function* intersectingTriangles(mesh:Mesh, edges:Array<HalfEdge>, radius:
     if (found) yield tri;    
   }
 }
-
 
 export function* vertexNormalsOf(mesh:Mesh, triangles?:Iterable<number>):Iterable<Segment> {
   const seen = new Set();

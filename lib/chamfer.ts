@@ -4,14 +4,16 @@ import type {GLTFMaterial, Vec3} from 'manifold-3d/manifoldCAD';
 import {wireframe} from './wireframe.ts';
 import type {HalfEdge} from './meshutil.ts';
 import {
-  halfedgeKey, runEdges, uniqueHalfedges, halfedgesOf, halfEdgeCycles,
+  edgeKey, halfedgeKey, runEdges, uniqueHalfedges, halfedgesOf, halfEdgeCycles,
   curvedTriangles, faceTriangles, flatTriangles,
   vertexPosition, vertexNormal,
-  triangleVertices
+  triangleVertices,
+  edgeEquals
 } from './meshutil.ts';
 import {
   sub, scale, add, equals, cross, length,  normalize,
-  constrainToSegment, pointInTriangle
+  constrainToSegment, pointInTriangle,
+  pointInPlane
 } from './math.ts';
 import type {Segment, Triangle} from './math.ts';
 import { segmentCylinder } from './intersection.ts';
@@ -28,7 +30,7 @@ function alignedOffset(mesh:Mesh, edges:Array<HalfEdge>, radius:number=1, triang
   const segmentPoints:Map<string, Array<Vec3>> = new Map();
 
   for (const edge of edges) {
-    const key = halfedgeKey(mesh, edge);
+    const key = edgeKey(mesh, edge);
     segments.set(key, edge.map(v => vertexPosition(mesh, v)) as Segment);
   }
 
@@ -60,7 +62,7 @@ function alignedOffset(mesh:Mesh, edges:Array<HalfEdge>, radius:number=1, triang
 
 /**
  * Generate a list of points offset from edges.
- * Results will mapped to the closest edge by halfedgeKey.
+ * Results will mapped to the closest edge by edgeKey.
  * 
  * Todo: Need to ensure these actually land on a triangle within the list.
  * Todo: normals can be inferred as part of this path.
@@ -70,7 +72,7 @@ function offset(mesh:Mesh, edges:Array<HalfEdge>, radius:number=1, triangles?:It
   const segmentPoints:Map<string, Array<Vec3>> = new Map();
   
   for (const edge of edges) {
-    const key = halfedgeKey(mesh, edge);
+    const key = edgeKey(mesh, edge);
     const segment = edge.map(v => vertexPosition(mesh, v)) as Segment;
     segments.set(key, segment);
   }
@@ -78,11 +80,14 @@ function offset(mesh:Mesh, edges:Array<HalfEdge>, radius:number=1, triangles?:It
   for (const t of (triangles ?? new Array(mesh.numTri).keys())) {
     const tri = triangleVertices(mesh,t).map(v => vertexPosition(mesh, v)) as Triangle;
     const n = normalize(tri);
+
+    
     for (const edge of edges) {
       const na = normalize(sub(vertexPosition(mesh, edge[1]),vertexPosition(mesh, edge[0])))
 
       const checkPoint = (pr:Vec3) => {
-        if (!pointInTriangle(pr, tri)) return;
+        if (!pointInPlane(pr, n, tri[0])) return;
+        //if (!pointInTriangle(pr, tri)) return;
         if (!segmentPoints.has(key)) segmentPoints.set(key, []);
         segmentPoints.get(key)!.push(pr);
       }
@@ -108,14 +113,10 @@ function offset(mesh:Mesh, edges:Array<HalfEdge>, radius:number=1, triangles?:It
       // actually doable before looking at the halfedge.  One halfedge may be curved while
       // the other is not.  E.g.: intersection of a plane and an orthagonal cylinder.
 
-      const key = halfedgeKey(mesh, edge);
+      const key = edgeKey(mesh, edge);
 
       proj2(edge[0], edge[0]);
       proj2(edge[1], edge[1]);
-
-      //proj2(edge[0], otherEdge[0]);
-      //proj1(edge[1], edge[1]);
-      //proj1(edge[1], otherEdge[1]);
     }
   }
   return segmentPoints;
@@ -124,14 +125,13 @@ function offset(mesh:Mesh, edges:Array<HalfEdge>, radius:number=1, triangles?:It
 const getPts = (mesh:Mesh, runID:number, radius:number=1):Map<string, Array<Vec3>> => {
   console.log(`Collecting points from run ${runID}...`)
   const triangles = [...faceTriangles(mesh, runID)];
-  //const triangles = [24]
   const edges = [...uniqueHalfedges(mesh, runEdges(mesh, triangles))]
   const curved = alignedOffset(mesh, edges, radius, curvedTriangles(mesh, triangles));
   const flat = offset(mesh, edges, radius, flatTriangles(mesh, triangles));
 
   const edgePts:Map<string, Array<Vec3>> = new Map()
   for (const edge of edges) {
-    const key = halfedgeKey(mesh, edge);
+    const key = edgeKey(mesh, edge);
     const curvedPts = curved.get(key) ?? [];
 
     const flatPts = flat.get(key) ?? [];
@@ -175,8 +175,8 @@ const example = () => {
     //Manifold.cube([35,35,25], true).translate([-35/2,0,25/2+0.01]).calculateNormals(0,minSharpAngle).add(Manifold.cylinder(25,35/2,35/2).translate([0,0,0.01]).calculateNormals(0,minSharpAngle)).translate([10,0,0]),
     //Manifold.cylinder(25,35/2,35/2,16).translate([0,0,0.1]).calculateNormals(0,minSharpAngle),
     //Manifold.cylinder(50,35/2, 35/2).translate([0,0,-15]).rotate([0,30,0]).calculateNormals(0,minSharpAngle),
-    //torus(10,25).rotate([-60,0,0]).translate([0,0,22]).calculateNormals(0,minSharpAngle),
-    torus(10,25).rotate([90,0,0]).translate([0,0,25]).calculateNormals(0,minSharpAngle),
+    torus(10,25).rotate([-60,0,0]).translate([0,0,22]).calculateNormals(0,minSharpAngle),
+    //torus(10,25).rotate([90,0,0]).translate([0,0,25]).calculateNormals(0,minSharpAngle),
   ].map(shape => setMaterial(shape,shapeMaterial));
 
   const showpts:Array<Manifold> = [];
@@ -207,23 +207,23 @@ const example = () => {
       const [v1, v2] = edge;
       const adjacent = edges
         .filter(e => e.includes(v1)|| e.includes(v2))
-        .filter(([ev1, ev2]) => ev1 !== v1 && ev2 !== v2);
+        .filter(other => !edgeEquals(mesh, edge, other));
 
       if (adjacent.length > 2) {
         console.log(`${edge} has ${adjacent.length} neighbours.`);
         //continue;
       }
 
-      const ptsA = [edge, /*...adjacent*/].map(e => allPtsA.get(halfedgeKey(mesh,e)) ?? []).flat()
-      const ptsB = [edge, /*...adjacent*/].map(e => allPtsB.get(halfedgeKey(mesh,e)) ?? []).flat()
+      const ptsA = [edge, /*...adjacent*/].map(e => allPtsA.get(edgeKey(mesh,e)) ?? []).flat()
+      const ptsB = [edge, /*...adjacent*/].map(e => allPtsB.get(edgeKey(mesh,e)) ?? []).flat()
       for (const pt of ptsA)    st(pt, [1,0,0]); // Flat.
       for (const pt of ptsB)    st(pt, [0,1,0]);
       for (const pt of segment) st(pt, [0,0,1]);
 
-      //const pts = [segment, ptsA].flat();
+      const pts = [segment, ptsA, ptsB].flat();
 
-      //const vol = Manifold.hull(pts);
-      //chamferParts.push(setMaterial(vol.calculateNormals(0,0),filletMaterial));
+      const vol = Manifold.hull(pts);
+      chamferParts.push(setMaterial(vol.calculateNormals(0,0),filletMaterial));
     }
     const chamfer = union(chamferParts)
 

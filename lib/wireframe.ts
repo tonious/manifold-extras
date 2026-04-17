@@ -3,7 +3,7 @@ import type {GLTFMaterial} from 'manifold-3d/manifoldCAD';
 import { batchUnion } from './batch.ts';
 import type {Segment} from './math.ts';
 import type {HalfEdge} from './meshutil.ts';
-import { uniqueHalfedges, faceEdges, halfedgesOf, vertexNormalsOf, halfedgeKey } from './meshutil.ts';
+import { uniqueHalfedges, faceEdges, halfedgesOf, vertexNormalsOf, edgeKey } from './meshutil.ts';
 
 
 
@@ -141,9 +141,9 @@ export function wireframe(object:Manifold|Mesh, args:Partial<MeshPreviewArgument
   const seen = new Set();
   function* edges() {
     for (const edge of faceEdges(mesh, triangles)) {
-      const key = halfedgeKey(mesh, edge);
+      const key = edgeKey(mesh, edge);
       if (!seen.has(key)) {
-        seen.add(halfedgeKey(mesh, edge));
+        seen.add(edgeKey(mesh, edge));
         yield edge;
       }
     }
@@ -151,9 +151,9 @@ export function wireframe(object:Manifold|Mesh, args:Partial<MeshPreviewArgument
 
   function* triangleEdges() {
     for (const edge of halfedgesOf(mesh, triangles)) {
-      const key = halfedgeKey(mesh, edge);
+      const key = edgeKey(mesh, edge);
       if (!seen.has(key)) {
-        seen.add(halfedgeKey(mesh, edge));
+        seen.add(edgeKey(mesh, edge));
         yield edge;
       }
     }
