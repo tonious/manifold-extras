@@ -70,6 +70,10 @@ export function mergedVertices(mesh:Mesh, vertex:number) {
   return [...vertices];
 }
 
+export function halfEdgeSegment(mesh:Mesh, halfedge:HalfEdge): Segment {
+  return halfedge.map(v => vertexPosition(mesh, v)) as Segment;
+}
+
 /**
  * A key that matches only one side of a halfedge.
  * 
@@ -134,7 +138,7 @@ function meshEdgeFaceMap(mesh:Mesh):Map<string, [originalID:number, faceID:numbe
     for (let t=0; t<mesh.numTri; t++) {
       const originalID = triangleOriginalID(mesh, t);
       const faceID = mesh.faceID[t];
-      for (const halfedge of halfedgesOf(mesh, [t])) {
+      for (const halfedge of halfedgesOf(mesh, t)) {
         faces.set(halfedgeKey(halfedge), [originalID, faceID]);
       }
     }
@@ -160,13 +164,18 @@ export function faceIDof(mesh:Mesh, halfedge:HalfEdge) {
  */
 export function* halfedgesOf(
   mesh:Mesh,
-  triangles?:Iterable<number>
+  triangles?:number|Iterable<number>
 ): Iterable<HalfEdge> {
-  for (const tri of triangles ?? new Array(mesh.numTri).keys()) {
-    const [v1, v2, v3] = [...mesh.triVerts.slice(tri*3, (tri+1)*3).values()];
+  if (typeof triangles === 'number') {
+    const t = triangles;
+    const [v1, v2, v3] = [...mesh.triVerts.slice(t*3, (t+1)*3).values()];
     yield([v1, v2]);
     yield([v2, v3]);
     yield([v3, v1]);
+  } else {
+    for (const t of triangles ?? new Array(mesh.numTri).keys()) {
+      yield* halfedgesOf(mesh, t);
+    }
   }
 }
 
@@ -252,7 +261,7 @@ export function* intersectingTriangles(mesh:Mesh, edges:Array<HalfEdge>, radius:
 
   for (const tri of (triangles ?? new Array(mesh.numTri).keys())) {
     let found = false;
-    for (const tedge of halfedgesOf(mesh,[tri])) {
+    for (const tedge of halfedgesOf(mesh,tri)) {
       const tsegment = tedge.map(v => vertexPosition(mesh,v)) as Segment;
       for (const segment of segments) {
         if (segmentCylinder(tsegment, segment, radius).length) {

@@ -15,6 +15,16 @@ export type Segment = [Vec3,Vec3];
  */
 export type Triangle = [Vec3, Vec3, Vec3];
 
+/**
+ * A plane, composed of a normal and a point in that order.
+ */
+export type Plane = [Vec3, Vec3];
+
+/**
+ * A ray, composed of a normal and a point in that order.
+ */
+export type Ray = [Vec3, Vec3];
+
 export const isSegment = (a:any) => {
     if (!Array.isArray(a)) return false;
     if (a.length !== 2) return false;
@@ -33,6 +43,8 @@ export const isVec3 = (a:any):boolean => {
     if (!Array.isArray(a)) return false;
     if (a.length !== 3) return false;
     if (a.find(x => typeof x !== 'number')) return false;
+    if (a.find(x => isNaN(x))) throw new Error('Naaan');
+
     return true;
 }
 
@@ -40,6 +52,7 @@ export const isMat4 = (a:any):boolean => {
     if (!Array.isArray(a)) return false;
     if (a.length !== 12 && a.length !== 16) return false;
     if (a.find(x => typeof x !== 'number')) return false;
+    if (a.find(x => isNaN(x))) throw new Error('Naaan');
     return true;
 }
 
@@ -116,11 +129,11 @@ export const angle = (a:Vec3, b: Vec3): number => {
     const ab = dot(a, b)
     const al = length(a);
     const bl = length(b);
-    return Math.acos(ab/(al*bl));
+    return Math.acos(ab/(al*bl)) * 180/Math.PI;
 };
 
 export const equals = (a: Vec3, b: Vec3, tolerance: number = 0): boolean => {
-    return length(sub(a, b)) <= tolerance;
+    return lengthSq(sub(a, b)) <= tolerance**2;
 };
 
 export const colinear = (a: Vec3, b: Vec3, tolerance: number = 0): boolean => {
@@ -325,7 +338,7 @@ export const barycentricInTriangle = (p:Barycentric, tolerance:number=1e-3):bool
     const [alpha, beta, gamma] = p;
 
     if (alpha<0 || alpha>1 || beta<0 || beta>1 || gamma<0 || gamma>1) return false;
-    return Math.abs(1-alpha+beta+gamma) <= tolerance;
+    return Math.abs(1-(alpha+beta+gamma)) <= tolerance;
 }
 
 /**
@@ -348,3 +361,8 @@ export const distanceToPlane = (a:Vec3, n:Vec3=[0,0,1], p:Vec3=[0,0,0]) =>
  */
 export const pointInPlane = (a:Vec3, n:Vec3=[0,0,1], p:Vec3=[0,0,0], tolerance:number=1e-3) => 
     Math.abs(dot(n,sub(a,p))) <= tolerance;
+
+
+export function planeOf(a:Triangle): Plane {
+    return [normalize(a), a[0]];
+}
