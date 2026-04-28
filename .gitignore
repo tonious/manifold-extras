@@ -8,3 +8,4 @@ lib/*.js.map
 lib/*.d.ts
 *.0x
 /*.glb
+/docs

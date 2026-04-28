@@ -23,7 +23,8 @@
   },
   "include": [
     "lib/**/*.ts",
-    "lib/**/*.mjs"
+    "lib/**/*.mjs",
+    "index.ts"
   ],
   "exclude": [
     "./lib/types"

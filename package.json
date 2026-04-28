@@ -57,7 +57,8 @@
   "scripts": {
     "build": "rollup -c",
     "prepare": "npm run clean && npm run build",
-    "clean": "rm -fr dist && tsc --build --clean"
+    "clean": "rm -fr dist && tsc --build --clean",
+    "docs" : "typedoc"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.8",
@@ -73,6 +74,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@rtsao/scc": "^1.1.0"
+    "@rtsao/scc": "^1.1.0",
+    "typedoc": "^0.28.19"
   }
 }
