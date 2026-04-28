@@ -4,6 +4,7 @@ import typescript from '@rollup/plugin-typescript';
 import { dts } from "rollup-plugin-dts";
 
 export default [{
+    // Bundle individual files.
     input: [
         'lib/axes.mjs',
         'lib/batch.ts',
@@ -13,9 +14,10 @@ export default [{
         'lib/intersection.ts',
         'lib/math.ts',
         'lib/meshutil.ts',
+        'lib/offset.ts',
         'lib/taper.ts',
-        'lib/wireframe.ts',
-        'index.ts'
+        'lib/torus.ts',
+        'lib/wireframe.ts'
     ],
     output: {
         dir: "dist",
@@ -31,6 +33,7 @@ export default [{
         typescript(), // Transpile TypeScript.
     ]
 }, {
+    // Create a bundle of everything.
     input: 'index.ts',
     output: {
         file: "dist/index.js",
@@ -46,6 +49,7 @@ export default [{
         typescript(), // Transpile TypeScript.
     ]
 }, {
+    // Roll up a top level type declaration.
     input: "./index.ts",
     output: {
         file: "dist/index.d.ts",

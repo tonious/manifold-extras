@@ -18,7 +18,7 @@ export function batchOperation (
   const opts:BatchOperationArguments = {
     batchSize: 500,
     callback: (seenObj: number) => {
-      console.log(`${seenObj} objects processed.`);
+      if (seenObj >= opts.batchSize) console.log(`${seenObj} objects processed.`);
     },
     ...args,
   }

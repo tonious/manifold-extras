@@ -6,4 +6,5 @@ tonious-manifold-extras-*.tgz
 lib/*.js
 lib/*.js.map
 lib/*.d.ts
-
+*.0x
+/*.glb

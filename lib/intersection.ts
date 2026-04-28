@@ -5,8 +5,6 @@ import {
   rotateAlign, translate,
   equals,
   pointInPlane,
-  project,
-  pointInTriangle,
   barycentric,
   barycentricInTriangle,
 
@@ -215,20 +213,24 @@ const triangle = (tri:Triangle, material=primaryMaterial) => {
 export const segmentCylinderExample = () => {
   const radius = 5;
   const axis:Segment = [[0,-5,0],[0,20,30]];
-  //const axis:Segment = [[0,20,30],[0,-5,0]];
+  const edges:Segment[] = [
+    [[0,20,30],[0,-5,0]],
+    [[30,0,0],[-30,0,15]],
+    [[-10,-15,0],[0,-5,-1]],
+    [[8,20,33],[-8,20,33]]
+  ];
 
-  const edge:Segment = [[-30,0,0],[30,0,15]]
-  //const edge:Segment = [[-10,-15,0],[0,-5,-1]]
+  for (const edge of edges) {
+    results.push(setMaterial(Manifold.hull([
+      Manifold.sphere(radius).translate(axis[0]),
+      Manifold.sphere(radius).translate(axis[1])
+    ]), primaryMaterial));
+    cylinder(edge);
 
-  results.push(setMaterial(Manifold.hull([
-    Manifold.sphere(radius).translate(axis[0]),
-    Manifold.sphere(radius).translate(axis[1])
-  ]), primaryMaterial));
-  cylinder(edge);
-
-  const pts = segmentCylinder(edge, axis, radius);
-  for (const pt of pts) {
-    sphere(pt,0.5)
+    const pts = segmentCylinder(edge, axis, radius);
+    for (const pt of pts) {
+      sphere(pt,0.5)
+    }
   }
 
   return results;
@@ -285,6 +287,6 @@ export const segmentTriangleExample = () => {
 }
 
 //export default segmentPlaneExample;
-//export default segmentCylinderExample;
-export default segmentTriangleExample;
+export default segmentCylinderExample;
+//export default segmentTriangleExample;
 //export default planePlaneExample;

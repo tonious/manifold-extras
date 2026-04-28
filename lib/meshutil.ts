@@ -99,19 +99,18 @@ export function edgeKey (mesh:Mesh, halfedge:HalfEdge): string {
   return `[${Math.min(...merged)},${Math.max(...merged)}]`;
 }
 
-export function halfedgeOpposite(mesh:Mesh, edge:HalfEdge): HalfEdge {
-  if (!meshEdgeOppositeCache.has(mesh)) meshEdgeOppositeCache.set(mesh, new Map());
-  const cache = meshEdgeOppositeCache.get(mesh)!;
-  const key = edgeKey(mesh, edge);
-  if (!cache.has(key)) {
-    cache.set(key, [...halfedgesOf(mesh)].filter(other => edgeEquals(mesh, edge, other)));
-  }
 
-  const [opposite, ...extras] = cache.get(key)!.filter(other => !halfEdgeEquals(edge, other));
-  if (!opposite || extras.length>0) {
-    throw new Error(`HalfEdge ${key} has ${extras.length+1} opposite edges.`);
+// FIXME accidentally quadratic.
+export function halfedgeOpposite(mesh:Mesh, edge:HalfEdge): HalfEdge {
+  if (!meshEdgeOppositeCache.has(mesh)) meshEdgeFaceMap(mesh);
+  const cache = meshEdgeOppositeCache.get(mesh)!;
+  const key = edgeKey(mesh, edge);  
+  const opposites = cache.get(key)!.filter(other => !halfEdgeEquals(edge, other));
+
+  if (opposites.length !== 1) {
+    throw new Error(`HalfEdge ${key} has ${opposites.length} opposite edges.`);
   }
-  return opposite;
+  return opposites[0];
 }
 
 /**
@@ -135,22 +134,38 @@ export function* uniqueHalfedges(mesh:Mesh, halfedges:Iterable<HalfEdge>): Itera
 function meshEdgeFaceMap(mesh:Mesh):Map<string, [originalID:number, faceID:number]> {
   if (!meshEdgeFaceCache.has(mesh)) {
     const faces:Map<string, [originalID:number, faceID:number]> = new Map();
+    const opposites:Map<string, Array<HalfEdge>> = new Map();
+
+    let runID = 0;
+    let nextrun = mesh.runIndex[runID+1]/3;
     for (let t=0; t<mesh.numTri; t++) {
-      const originalID = triangleOriginalID(mesh, t);
+      if (t>=nextrun && t>0) {
+        runID++;
+        nextrun = mesh.runIndex[runID+1]/3;
+      }
+
+      const originalID = mesh.runOriginalID[runID];
       const faceID = mesh.faceID[t];
       for (const halfedge of halfedgesOf(mesh, t)) {
-        faces.set(halfedgeKey(halfedge), [originalID, faceID]);
+        const key = halfedgeKey(halfedge)
+        faces.set(key, [originalID, faceID]);
+
+        const ekey = edgeKey(mesh,halfedge);
+        if (!opposites.has(ekey)) opposites.set(ekey, []);
+        opposites.get(ekey)!.push(halfedge);
       }
     }
+
     meshEdgeFaceCache.set(mesh, faces);
+    meshEdgeOppositeCache.set(mesh, opposites)
   }
   return meshEdgeFaceCache.get(mesh)!;
 }
 
-export function runIDof(mesh:Mesh, halfedge:HalfEdge) {
+export function originalIDof(mesh:Mesh, halfedge:HalfEdge) {
   const faces = meshEdgeFaceMap(mesh);
-  const [runID] = faces.get(halfedgeKey(halfedge)) ?? [];
-  return runID;
+  const [originalID] = faces.get(halfedgeKey(halfedge)) ?? [];
+  return originalID;
 }
 
 export function faceIDof(mesh:Mesh, halfedge:HalfEdge) {
@@ -188,10 +203,11 @@ export function* halfedgesOf(
 export function* runEdges(mesh:Mesh, triangles?:Iterable<number>): Iterable<HalfEdge> {
   const isRunEdge = (thisEdge:HalfEdge) => {
     const thatEdge = halfedgeOpposite(mesh, thisEdge);
-    return runIDof(mesh,thisEdge) !== runIDof(mesh, thatEdge);
+    if (originalIDof(mesh,thisEdge) !== originalIDof(mesh, thatEdge)) return true;
+    return false;
   };
 
-  // Pass halfedges that border two faces.
+  // Pass halfedges that border two runs.
   for (const halfedge of halfedgesOf(mesh, triangles)) {
     if (isRunEdge(halfedge)) yield(halfedge);
   }
@@ -207,7 +223,7 @@ export function* faceEdges(mesh:Mesh, triangles?:Iterable<number>): Iterable<Hal
   const isFaceEdge = (thisEdge:HalfEdge) => {
     const thatEdge = halfedgeOpposite(mesh, thisEdge);
     return faceIDof(mesh,thisEdge) !== faceIDof(mesh, thatEdge) 
-      || runIDof(mesh,thisEdge) !== runIDof(mesh, thatEdge);
+      || originalIDof(mesh,thisEdge) !== originalIDof(mesh, thatEdge);
   };
   
   // Pass halfedges that border two faces.
@@ -225,11 +241,31 @@ export function* faceTriangles(
   faceID:number|null = null,
   triangles?:Iterable<number>
 ): Iterable<number> {
-  for (const t of triangles ?? new Array(mesh.numTri).keys()) {
-    if (typeof originalID === 'number' && triangleOriginalID(mesh,t) !== originalID) continue;
-    if (typeof faceID === 'number' && mesh.faceID[t] !== faceID) continue;
-    yield t
+  function* byOriginalID(iter:Iterable<number>) {
+    if (typeof originalID !== 'number') {
+      yield* iter;
+    } else {
+      const runID = mesh.runOriginalID.indexOf(originalID);
+      let thisrun = mesh.runIndex[runID]/3;
+      let nextrun = mesh.runIndex[runID+1]/3;
+
+      for (const t of iter) {
+        if (t < thisrun || t >= nextrun) continue;
+        if (triangleOriginalID(mesh,t) != originalID) throw new Error("Uh oh")
+        yield t;
+      }
+    }
   }
+
+  function* byFaceID(iter:Iterable<number>) {
+    if (typeof faceID !== 'number') {
+      yield* iter;
+    } else {
+      for (const t of iter) if (mesh.faceID[t] === faceID) yield t;
+    }
+  }
+  
+  yield* byFaceID(byOriginalID(triangles ?? new Array(mesh.numTri).keys()))
 }
 
 export function isFlat(mesh:Mesh, triangle:number, tolerance:number=1e-3) {
@@ -248,7 +284,6 @@ export function* curvedTriangles(mesh:Mesh, triangles?:Iterable<number>, toleran
     if (!isFlat(mesh, tri, tolerance)) yield(tri);
   }
 }
-
 
 export function* flatTriangles(mesh:Mesh, triangles?:Iterable<number>,  tolerance:number=1e-3): Iterable<number> {
   for (const tri of (triangles ?? new Array(mesh.numTri).keys())) {
@@ -319,7 +354,8 @@ export function halfEdgeCycles(edges:Iterable<HalfEdge>) {
   const digraph:Map<number, Set<number>> = new Map();
   for (const [v1, v2] of edges) {
     if (!digraph.has(v1)) digraph.set(v1, new Set());
-    digraph.get(v1)!.add(v2)
+    if (!digraph.has(v2)) digraph.set(v2, new Set());
+    digraph.get(v1)!.add(v2);
   }
 
   const cycles:Array<Array<number>> = [];
